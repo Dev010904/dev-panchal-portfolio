@@ -1,0 +1,14 @@
+node_modules
+.next
+out
+.env*
+!.env.example
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+.vercel
+.claude/
+BUILD_PROMPT.md
+docs/verdict.md
+docs/compare/
+docs/trionn-teardown.md

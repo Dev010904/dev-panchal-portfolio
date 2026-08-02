@@ -1,0 +1,317 @@
+@import 'tailwindcss';
+
+/* ─────────────────────────────────────────────────────────────────────────
+   DESIGN SYSTEM — dark only. There is no light mode and there will not be.
+   See /docs/DESIGN-SYSTEM.md
+   ───────────────────────────────────────────────────────────────────────── */
+
+@theme {
+  --color-bg: #08080a;
+  --color-bg-raise: #101013;
+  --color-fg: #f2f2f0;
+  --color-fg-dim: #8a8a85;
+  --color-rule: #1e1e22;
+  --color-accent: #ff5a1f;
+
+  --font-display: var(--font-display), 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
+
+  --ease-move: cubic-bezier(0.65, 0.05, 0.36, 1);
+  --ease-reveal: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:root {
+  /* --accent-2 (#3A6EA5) is deliberately absent: it is a rim light in the 3D
+     scene only and must never appear in the DOM. */
+  --gutter: clamp(1.25rem, 4vw, 4.5rem);
+  --rule-w: 1px;
+  color-scheme: dark;
+
+  /**
+   * THE TOP BAR'S HEIGHT, as one number.
+   *
+   * The bar is fixed and painted with mix-blend-difference, so anything that
+   * scrolls underneath it does not pass behind it — it inverts against it. Two
+   * lines of the same monospace label at the same size then land on top of each
+   * other and neither is readable, which is what the interior pages' label and
+   * spec row did about 120px into the scroll.
+   *
+   * Both the bar and everything that has to clear it derive from these, so the
+   * clearance cannot drift: the bar sets its own padding and a min-height from
+   * them, and the pages offset by them. Previously the two sides each carried
+   * their own clamp and only agreed by coincidence.
+   *
+   * 2.0625rem is the chip's own height — 0.6rem of padding top and bottom, the
+   * label's line box, and a hairline border either side.
+   */
+  --nav-pad-y: clamp(0.9rem, 2vh, 1.5rem);
+  --nav-h: calc(var(--nav-pad-y) * 2 + 2.0625rem);
+  /** Breathing room between the bar and the first line of a page beneath it. */
+  --nav-clear: clamp(1.25rem, 4.5vh, 2.75rem);
+}
+
+* {
+  min-width: 0;
+}
+
+html {
+  background: var(--color-bg);
+  /* Lenis owns scrolling. */
+  scroll-behavior: auto;
+
+  /* Reserve the scrollbar gutter from the first paint. Without it the page is
+     ~7px wider before the content grows tall enough to need a scrollbar, and
+     every ScrollTrigger pin-spacer measured in that window is 7px too wide
+     forever after — which shows up as a mystery horizontal scrollbar. */
+  scrollbar-gutter: stable;
+  overflow-x: clip;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-display);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overscroll-behavior-y: none;
+}
+
+/* Lenis */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-bg);
+}
+
+/* Scrollbar — present but nearly invisible. */
+::-webkit-scrollbar {
+  width: 7px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-rule);
+}
+
+/* ── Type scale ─────────────────────────────────────────────────────────── */
+
+.t-display {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 0.9;
+  font-size: clamp(2.75rem, 10.5vw, 11rem);
+  text-wrap: balance;
+}
+
+.t-h2 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 0.92;
+  font-size: clamp(2rem, 6.2vw, 5.6rem);
+}
+
+/**
+ * A REVEAL MASK — the box a line of type slides up out of.
+ *
+ * Display type here is set at line-height 0.9, which is a tighter box than the
+ * face's own descenders need. A bare `overflow: hidden` wrapper therefore cuts
+ * the tails off g, y and p and the comma after "Everything," — the mask is
+ * doing exactly what it was told and the box it was given is too short. It is
+ * invisible on a line with no descenders, which is why it survived: "Static is"
+ * and "a choice." are both clean, and "on paper." is not.
+ *
+ * The padding gives the mask the room the descenders actually occupy; the
+ * negative margin takes the same amount back out of the layout, so the lines
+ * still sit at their designed spacing and nothing below them moves. Every mask
+ * that exists to animate a line of type in should use this and not a bare
+ * `overflow-hidden`.
+ */
+.line-mask {
+  display: block;
+  overflow: hidden;
+  padding-bottom: 0.18em;
+  margin-bottom: -0.18em;
+}
+
+.t-lead {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.22;
+  font-size: clamp(1.15rem, 2.5vw, 2.1rem);
+}
+
+.t-body {
+  font-size: clamp(0.9rem, 1.05vw, 1.0625rem);
+  line-height: 1.62;
+  letter-spacing: -0.006em;
+  color: var(--color-fg-dim);
+}
+
+.t-label {
+  font-family: var(--font-mono);
+  font-size: clamp(0.6875rem, 0.78vw, 0.75rem);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  line-height: 1;
+  color: var(--color-fg-dim);
+}
+
+.t-mono {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Structural furniture ───────────────────────────────────────────────── */
+
+.rule {
+  height: var(--rule-w);
+  width: 100%;
+  background: var(--color-rule);
+  border: 0;
+}
+
+.rule-v {
+  width: var(--rule-w);
+  background: var(--color-rule);
+}
+
+/* The 12-column spine. Asymmetry comes from where things are placed in it. */
+.grid12 {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  column-gap: clamp(0.75rem, 1.6vw, 1.75rem);
+  padding-inline: var(--gutter);
+  width: 100%;
+}
+
+.chip {
+  border: var(--rule-w) solid var(--color-rule);
+  padding: 0.6rem 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+/* ── Interaction ────────────────────────────────────────────────────────── */
+
+a,
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
+
+/* The custom cursor replaces the native one on pointer-fine devices only. */
+@media (hover: hover) and (pointer: fine) {
+  html.has-cursor,
+  html.has-cursor * {
+    cursor: none !important;
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Skip link — visible on focus, sits above everything including the canvas. */
+.skip-link {
+  position: fixed;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 200;
+  transform: translateY(-160%);
+  background: var(--color-fg);
+  color: var(--color-bg);
+  padding: 0.6rem 1rem;
+  transition: transform 0.3s var(--ease-reveal);
+}
+.skip-link:focus-visible {
+  transform: translateY(0);
+}
+
+/* ── Spark ──────────────────────────────────────────────────────────────────
+   The ⚡ in the hero's interaction hints. An irregular flicker rather than a
+   smooth pulse: an evenly breathing emoji reads as a loading state, whereas a
+   stutter reads as electrical and matches what the lines actually do. The
+   keyframe stops are deliberately unevenly spaced for the same reason.
+
+   Pure CSS on purpose. The one-loop rule is about JavaScript animation — every
+   moving thing in JS hangs off gsap.ticker — and a compositor-driven CSS
+   keyframe costs the main thread nothing. The reduced-motion block below
+   already neutralises it. */
+.spark {
+  animation: spark 3.1s steps(1, end) infinite;
+  will-change: opacity;
+}
+@keyframes spark {
+  0%,
+  6% {
+    opacity: 1;
+  }
+  8%,
+  11% {
+    opacity: 0.25;
+  }
+  13%,
+  46% {
+    opacity: 1;
+  }
+  48%,
+  50% {
+    opacity: 0.3;
+  }
+  52%,
+  61% {
+    opacity: 1;
+  }
+  63%,
+  65% {
+    opacity: 0.25;
+  }
+  67%,
+  100% {
+    opacity: 1;
+  }
+}
+
+/* ── Reduced motion ─────────────────────────────────────────────────────────
+   Hard-cut to end states. The site must still look designed — not stripped. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .marquee-track {
+    transform: none !important;
+  }
+}

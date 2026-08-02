@@ -1,0 +1,42 @@
+{
+  "name": "dev-panchal-portfolio",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "brand": "node --experimental-strip-types scripts/generate-brand.ts"
+  },
+  "dependencies": {
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.1",
+    "@react-three/postprocessing": "^3.0.4",
+    "framer-motion": "^11.18.2",
+    "gsap": "^3.13.0",
+    "lenis": "^1.1.20",
+    "maath": "^0.10.8",
+    "next": "^15.5.4",
+    "postprocessing": "^6.36.6",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "three": "^0.171.0",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.0",
+    "@types/node": "^22.10.5",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@types/three": "^0.171.0",
+    "leva": "^0.9.36",
+    "raw-loader": "^4.0.2",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.7.3"
+  },
+  "allowScripts": {
+    "sharp@0.34.5": true
+  }
+}
