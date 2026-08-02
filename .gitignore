@@ -1,0 +1,19 @@
+node_modules
+.next
+out
+.env*
+!.env.example
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+.vercel
+
+# local editor / tooling state, not part of the project
+.vscode/
+.idea/
+.history/
+
+BUILD_PROMPT.md
+docs/verdict.md
+docs/compare/
+docs/trionn-teardown.md
