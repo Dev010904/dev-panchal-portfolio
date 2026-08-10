@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 
 import { MARQUEE } from '@/config/animation';
-import { ScrollTrigger, useGsap } from '@/lib/gsap';
+import { gsap, ScrollTrigger, useGsap } from '@/lib/gsap';
 import { useScene } from '@/store/scene';
 
 /**
@@ -40,7 +40,6 @@ export function Marquee() {
       let velocity = 0;
       let skew = 0;
       let direction = 1;
-      let raf = 0;
       let half = innerEl.offsetWidth / 2;
 
       const measure = () => {
@@ -62,10 +61,22 @@ export function Marquee() {
       const ro = new ResizeObserver(measure);
       ro.observe(innerEl);
 
-      let last = performance.now();
-      const tick = (now: number) => {
-        const dt = Math.min((now - last) / 1000, 0.05);
-        last = now;
+      /**
+       * Runs on gsap.ticker rather than a requestAnimationFrame of its own.
+       *
+       * This was the site's third rAF loop, and the README's claim that no
+       * component owned one. It is not a correctness fix — the band reads the
+       * same either way, because ScrollTrigger writes `velocity` during the
+       * gsap dispatch and gsap's rAF is registered first regardless. It is
+       * removed because an independent loop is a second callback dispatch and
+       * a second chance to force a style recalculation every frame, for
+       * nothing, and because the invariant is worth actually holding.
+       *
+       * `delta` arrives in seconds already, so the manual performance.now()
+       * bookkeeping goes with it.
+       */
+      const tick = (delta: number) => {
+        const dt = Math.min(delta, 0.05);
 
         const speed =
           MARQUEE.baseSpeed + Math.min(Math.abs(velocity) * MARQUEE.velocityFactor, 2600);
@@ -86,14 +97,13 @@ export function Marquee() {
 
         trackEl.style.transform = `translate3d(${-offset}px, 0, 0)`;
         innerEl.style.transform = `skewX(${skew}deg)`;
-
-        raf = requestAnimationFrame(tick);
       };
 
-      raf = requestAnimationFrame(tick);
+      const onTick = (_t: number, deltaMs: number) => tick(deltaMs / 1000);
+      gsap.ticker.add(onTick);
 
       return () => {
-        cancelAnimationFrame(raf);
+        gsap.ticker.remove(onTick);
         ro.disconnect();
         st.kill();
       };
