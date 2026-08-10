@@ -472,8 +472,31 @@ export const SWEEP = {
    * every few hundred milliseconds is a thing that noticed you.
    */
   strike: {
-    /** Screen-space proximity that arms a line, in CSS px. */
-    radius: 80,
+    /**
+     * Screen-space proximity that arms a line, in CSS px, measured to the
+     * nearest point ON the projected stroke.
+     *
+     * This was 80, and 80 was covering for a broken measurement rather than
+     * expressing a design intent. The old test took the distance to the nearest
+     * of 17 sampled VERTICES spread ~190 CSS px apart, so the threshold had to
+     * be enormous to catch anything at all — and even then it left dead zones
+     * between the probes while firing 79px clear of the line beside them.
+     *
+     * With point-to-segment distance the number can mean what it says. 16px is
+     * a comfortable cursor's-width either side of a hairline: close enough that
+     * every strike reads as "I touched that line", far enough that you do not
+     * have to be pixel-perfect on a stroke drawn at 0.11 opacity.
+     */
+    radius: 16,
+    /**
+     * Hysteresis. Arm at `radius`, disarm at `radius * exitFactor`.
+     *
+     * Without it a cursor resting exactly on the boundary crosses it on the
+     * sub-pixel jitter of its own damping and the line strobes on and off. The
+     * gap has to be wider than that jitter and narrower than anything a hand
+     * does on purpose; 1.4 puts the release at ~22px.
+     */
+    exitFactor: 1.4,
     /** Preallocated bolts. Geometry is rewritten in place, never reallocated. */
     pool: 2,
 
@@ -529,7 +552,15 @@ export const SWEEP = {
     burst: [2, 3] as [number, number],
     /** Gap between strikes inside a burst, seconds. */
     gap: [0.05, 0.11] as [number, number],
-    /** Pause between bursts, seconds. */
+    /**
+     * Pause between bursts, seconds.
+     *
+     * BETWEEN bursts only, and never before the first strike after the cursor
+     * arrives. The old code gated every strike — including the first — on a
+     * timer left over from the previous burst, so touching a line during a
+     * 1.05s pause did nothing at all and the whole interaction read as broken
+     * roughly half the time you tried it. Entry now fires on the same frame.
+     */
     pause: [0.42, 1.05] as [number, number],
 
     /** The hot core: near-white, tight, high falloff exponent. */

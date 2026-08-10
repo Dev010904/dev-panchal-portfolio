@@ -6,6 +6,7 @@ import * as THREE from 'three';
 
 import { SWEEP } from '@/config/animation';
 import { createBolt, createBoltMaterial, strike } from '@/scenes/bolt';
+import { nearestOnLine, projectLine, sweepDebug } from '@/scenes/sweep';
 import { sceneState } from '@/store/scene';
 
 const STRIKE = SWEEP.strike;
@@ -148,7 +149,6 @@ export function SweepLines() {
   const scratch = useMemo(
     () => ({
       quat: new THREE.Quaternion(),
-      probe: new THREE.Vector3(),
       hit: new THREE.Vector3(),
       before: new THREE.Vector3(),
       after: new THREE.Vector3(),
@@ -207,47 +207,46 @@ export function SweepLines() {
     if (s.reducedMotion || s.isMobile) return;
 
     // ── Proximity ───────────────────────────────────────────────────────────
-    // The curve is sampled rather than tested exactly: at 16 probes across a
-    // line that is mostly off-screen, the error is far below the 80px
-    // threshold and it costs 48 projections a frame for the whole set.
+    // True point-to-segment distance across the projected polyline, in CSS
+    // pixels. See scenes/sweep.ts for what this replaced and why the old
+    // nearest-vertex test produced both "it ignores me on the line" and "it
+    // fires when I am nowhere near it" from a single cause.
     const [pxNdc, pyNdc] = s.pointer;
-    const half = SWEEP.segments / 2;
+    const cx = (pxNdc * 0.5 + 0.5) * size.width;
+    const cy = (1 - (pyNdc * 0.5 + 0.5)) * size.height;
+    const exitRadius = STRIKE.radius * STRIKE.exitFactor;
+    sweepDebug.measured = true;
 
     for (let i = 0; i < SWEEP.lines.length; i++) {
       const g = groups.current[i];
       if (!g) continue;
 
       const { points } = curves[i];
-      let bestDist = Infinity;
-      let bestIndex = -1;
+      projectLine(i, points, g.matrixWorld, camera, size.width, size.height);
 
-      // Only the middle half of the curve can be near the cursor — the rest is
-      // far outside the viewport by construction.
-      for (let k = 0; k <= 16; k++) {
-        const idx = Math.round(half * 0.5 + (half * k) / 16);
-        scratch.probe
-          .fromArray(points, idx * 3)
-          .applyMatrix4(g.matrixWorld)
-          .project(camera);
+      const near = nearestOnLine(i, cx, cy);
+      const bestDist = near.distance;
+      const bestIndex = near.index;
+      sweepDebug.distance[i] = bestDist;
 
-        if (scratch.probe.z < -1 || scratch.probe.z > 1) continue;
+      // ── Hysteresis ────────────────────────────────────────────────────────
+      // Arm at `radius`, release at `radius * exitFactor`. A single threshold
+      // strobes when the cursor rests on it, because the damped pointer jitters
+      // across the boundary on its own.
+      const was = sweepDebug.inside[i];
+      const isInside = was ? bestDist <= exitRadius : bestDist <= STRIKE.radius;
+      sweepDebug.inside[i] = isInside;
 
-        const dx = (scratch.probe.x - pxNdc) * 0.5 * size.width;
-        const dy = (scratch.probe.y - pyNdc) * 0.5 * size.height;
-        const d = Math.hypot(dx, dy);
-        if (d < bestDist) {
-          bestDist = d;
-          bestIndex = idx;
-        }
-      }
-
-      if (bestDist > STRIKE.radius || bestIndex < 0) continue;
+      if (!isInside || bestIndex < 0) continue;
 
       // ── Fire ──────────────────────────────────────────────────────────────
-      // Strikes come in bursts of two or three, then an uneven pause. Firing at
-      // one steady interval — which is what the previous version did — reads as
-      // a loop within about two seconds, however random each bolt's geometry is.
-      if (t < nextFire.current[i]) continue;
+      // Entry fires on the SAME FRAME the cursor crosses the threshold. The
+      // pause is a rhythm between bursts, not an entry fee — gating the first
+      // strike on a timer left over from the last burst is what made touching a
+      // line feel unresponsive.
+      const entering = !was;
+      if (entering) burst.current[i] = 0;
+      else if (t < nextFire.current[i]) continue;
 
       if (burst.current[i] <= 0) burst.current[i] = randInt(STRIKE.burst);
       burst.current[i] -= 1;

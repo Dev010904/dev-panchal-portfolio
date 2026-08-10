@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { getLenis } from '@/components/SmoothScroll';
 import { gsap, ScrollTrigger } from '@/lib/gsap';
 import { blastHandle } from '@/scenes/handles';
+import { sweepDebug, sweepScreen } from '@/scenes/sweep';
 import { useScene } from '@/store/scene';
 
 /**
@@ -62,9 +63,101 @@ export function DevLoop() {
         // every time-based animation freezes with no other symptom.
         clock.running = true;
         clock.oldTime = performance.now() - dt * 1000;
+        // Reset BEFORE the frame, never after: resetting after would zero the
+        // very totals the caller is about to read.
+        gl.info.reset();
         advance(stamp);
       }
       return snapshot();
+    };
+
+    /**
+     * Frame-time distribution over `count` real frames.
+     *
+     * A mean is useless here — nobody perceives an average frame. The p95 and
+     * the single worst frame are what register as jank, so those are what this
+     * reports. Timed with `performance.now()` around a forced `advance()`, which
+     * measures our own frame cost rather than waiting on the compositor.
+     */
+    const profile = (count = 180) => {
+      const times: number[] = new Array(count);
+      let gsapT = gsap.globalTimeline.time();
+      let mark = performance.now();
+      for (let i = 0; i < count; i++) {
+        const t0 = performance.now();
+        mark += 1000 / 60;
+        gsapT += 1 / 60;
+        gsap.updateRoot(gsapT);
+        getLenis()?.raf(mark);
+        clock.running = true;
+        clock.oldTime = performance.now() - 1000 / 60;
+        gl.info.reset();
+        advance(mark);
+        times[i] = performance.now() - t0;
+      }
+      const sorted = [...times].sort((a, b) => a - b);
+      const at = (q: number) => Number(sorted[Math.min(count - 1, Math.floor(count * q))].toFixed(2));
+      return {
+        frames: count,
+        p50: at(0.5),
+        p95: at(0.95),
+        p99: at(0.99),
+        worst: Number(sorted[count - 1].toFixed(2)),
+        over16ms: times.filter((x) => x > 16.67).length,
+        drawCalls: gl.info.render.calls,
+        triangles: gl.info.render.triangles,
+      };
+    };
+
+    /**
+     * Measured distance from a screen position to each sweep line, and whether
+     * that position arms it.
+     *
+     * Calls the renderer's own proximity code — not a copy of it — so a passing
+     * result means the thing that actually fires bolts agrees. `settle` frames
+     * are advanced first because the projection is refreshed inside useFrame.
+     */
+    const lightning = (x: number, y: number, settle = 2) => {
+      window.dispatchEvent(
+        new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true, pointerType: 'mouse' }),
+      );
+      tick(1 / 60, settle);
+      return sweepScreen.map((l, i) => ({
+        id: l.id,
+        distance: Number(sweepDebug.distance[i].toFixed(2)),
+        armed: sweepDebug.inside[i],
+      }));
+    };
+
+    /**
+     * Walk the cursor across a horizontal run at fixed Y and report, for one
+     * line, measured distance against armed state at every step. This is the
+     * empirical check that the arming boundary matches the visible stroke.
+     */
+    const lightningSweep = (
+      lineId: string,
+      y: number,
+      x0 = 0,
+      x1 = window.innerWidth,
+      step = 8,
+    ) => {
+      const idx = sweepScreen.findIndex((l) => l.id === lineId);
+      if (idx < 0) return `no line "${lineId}"`;
+      const rows: { x: number; d: number; armed: boolean }[] = [];
+      for (let x = x0; x <= x1; x += step) {
+        lightning(x, y, 1);
+        rows.push({ x, d: Number(sweepDebug.distance[idx].toFixed(2)), armed: sweepDebug.inside[idx] });
+      }
+      const armed = rows.filter((r) => r.armed);
+      return {
+        line: lineId,
+        y,
+        samples: rows.length,
+        armedCount: armed.length,
+        maxDistanceWhileArmed: armed.length ? Math.max(...armed.map((r) => r.d)) : null,
+        minDistanceWhileIdle: rows.filter((r) => !r.armed).reduce((m, r) => Math.min(m, r.d), Infinity),
+        rows,
+      };
     };
 
     /** Jump to an absolute scroll position and settle it. */
@@ -79,6 +172,22 @@ export function DevLoop() {
     /** Jump to a fraction of total scrollable height. */
     const scrollToFraction = (f: number, settleFrames = 30) =>
       scrollTo((document.body.scrollHeight - window.innerHeight) * f, settleFrames);
+
+    /**
+     * WARNING ABOUT EVERY NUMBER THIS EVER REPORTED BEFORE THIS COMMIT.
+     *
+     * `gl.info` resets itself at the start of every `render()` call. The post
+     * stack calls render several times a frame and finishes with a fullscreen
+     * quad, so reading `info.render` after the frame returned the cost of THAT
+     * QUAD and nothing else — `drawCalls: 1, triangles: 1`, at every scroll
+     * position, forever. Any performance figure quoted from this harness before
+     * now is worthless. See docs/PERFORMANCE.md.
+     *
+     * `autoReset = false` makes the counters accumulate; DevLoop resets them
+     * once per frame, before the frame is drawn, so what is read afterwards is
+     * one frame's true total across every pass.
+     */
+    gl.info.autoReset = false;
 
     const snapshot = () => ({
       elapsed: Number(clock.elapsedTime.toFixed(3)),
@@ -159,10 +268,13 @@ export function DevLoop() {
       scrollToFraction,
       pointer,
       snapshot,
+      profile,
       inspect,
       reducedMotion,
       state,
       blast,
+      lightning,
+      lightningSweep,
       scene,
       // The camera is not part of the scene graph in R3F, so a traversal
       // cannot find it. Exposing it here is what lets QA project a piece of
