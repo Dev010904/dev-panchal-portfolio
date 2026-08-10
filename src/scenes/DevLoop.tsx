@@ -215,6 +215,87 @@ export function DevLoop() {
     };
 
     /**
+     * SCROLL-PATH STALENESS — how many frames the rendered camera is behind the
+     * scroll position that produced it.
+     *
+     * This is the path where the multi-rAF-loop architecture can actually hurt,
+     * and it has the opposite shape to the pointer path. A pointer event is
+     * dispatched before any rAF callback in the frame, so every loop sees it in
+     * the same frame regardless of order. Scroll is not an event we receive —
+     * it is a value INTEGRATED by Lenis inside a gsap.ticker callback, and then
+     * read by the camera inside R3F's separate useFrame. If R3F's rAF is
+     * registered first, the camera renders from the PREVIOUS frame's scroll,
+     * every frame, forever.
+     *
+     * Measured by recording, per rendered frame, the Lenis scroll value and the
+     * camera Y that frame drew with, then checking which scroll sample the
+     * camera actually corresponds to. Run on REAL frames while Lenis eases
+     * toward a target, because forcing frames imposes our own ordering and
+     * would answer a question nobody asked.
+     */
+    const scrollLag = async (distance = 1400) => {
+      const lenis = getLenis();
+      if (!lenis) return 'no lenis (reduced motion?)';
+
+      const start = lenis.scroll;
+      const samples: { scroll: number; camY: number; t: number }[] = [];
+      let stop = false;
+
+      const collect = () => {
+        samples.push({ scroll: lenis.scroll, camY: camera.position.y, t: performance.now() });
+        if (!stop && samples.length < 240) requestAnimationFrame(collect);
+      };
+      requestAnimationFrame(collect);
+
+      lenis.scrollTo(start + distance, { duration: 1.2 });
+      await new Promise((r) => setTimeout(r, 1600));
+      stop = true;
+
+      // Correlate camera against scroll at 0, 1 and 2 frames of delay. The
+      // offset with the lowest total error is how stale the render is.
+      const moving = samples.filter((s, i) => i > 2 && Math.abs(s.scroll - samples[i - 1].scroll) > 0.5);
+      if (moving.length < 12) return { samples: samples.length, moving: moving.length, note: 'not enough motion captured' };
+
+      // Velocity series. Sign agreement would be useless here — it is constant
+      // through a monotonic ease. The EASE PROFILE is the signal: Lenis
+      // accelerates and decelerates, so cross-correlating the two velocity
+      // series discriminates phase properly.
+      const dScroll: number[] = [];
+      const dCam: number[] = [];
+      for (let i = 1; i < samples.length; i++) {
+        dScroll.push(samples[i].scroll - samples[i - 1].scroll);
+        dCam.push(samples[i].camY - samples[i - 1].camY);
+      }
+
+      const corrAt = (lagF: number) => {
+        let sxy = 0;
+        let sxx = 0;
+        let syy = 0;
+        for (let i = lagF; i < dCam.length; i++) {
+          const a = dCam[i];
+          const b = dScroll[i - lagF];
+          sxy += a * b;
+          sxx += a * a;
+          syy += b * b;
+        }
+        const d = Math.sqrt(sxx * syy);
+        return d > 1e-12 ? Number((sxy / d).toFixed(4)) : 0;
+      };
+
+      // Absolute value: camera Y moves opposite to scroll, so a perfect match
+      // is -1. Phase is what matters, not the sign of the gain.
+      const corr = [0, 1, 2, 3].map((l) => Math.abs(corrAt(l)));
+      const best = corr.indexOf(Math.max(...corr));
+      return {
+        samples: samples.length,
+        movingFrames: moving.length,
+        correlationByFrameLag: corr,
+        bestFitFrameLag: best,
+        totalScroll: Number((lenis.scroll - start).toFixed(1)),
+      };
+    };
+
+    /**
      * CURSOR TRACKING ERROR — the number that describes the reported lag.
      *
      * `latency()` measures event-to-first-render and reports 1 frame, which is
@@ -482,6 +563,7 @@ export function DevLoop() {
       state,
       blast,
       cursorLag,
+      scrollLag,
       lightning,
       lightningScan,
       lightningSweep,
