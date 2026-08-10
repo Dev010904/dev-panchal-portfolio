@@ -458,6 +458,46 @@ Tweens are the exception and are fine: `gsap.updateRoot()` is exactly how the
 global timeline advances, so ScrollTrigger-scrubbed and tweened DOM state does
 step correctly.
 
-Worked around by exporting `cursorStep(dt)` from `Cursor.tsx` and driving it
-directly. The general fix — a step registry the harness can drive, replacing
-direct `gsap.ticker.add` calls — belongs with the frame-loop unification.
+### Fixed — the step registry, 2026-08-10
+
+`lib/steps.ts`. `addStep(fn)` registers with `gsap.ticker` exactly as before AND
+keeps a reference the harness can call, so `__qa.tick()` now drives the DOM
+layer as well as the scene. `useTicker` routes through it, and the three
+components that called `gsap.ticker.add` directly — `Cursor`, `HoldToBlast`,
+`Marquee` — now go through it too.
+
+Two things stay on a bare `ticker.add`, deliberately:
+
+- **Lenis**, because `tick()` already drives `lenis.raf(stamp)` with a
+  controlled timestamp; registering it as a step would integrate the same frame
+  twice against two different clocks.
+- **The harness's own probes**, for the same reason.
+
+`__qa.snapshot()` now reports `steps`, the number of registered callbacks. **A
+zero there on a page that plainly has a cursor and a marquee means the registry
+is disconnected and every DOM-side observation through the harness is worthless
+again.** It is there so that failure is visible rather than silent, which is the
+one thing the original defect was not.
+
+The `cursorStep(dt)` export is gone — a per-component escape hatch is precisely
+what the registry replaces.
+
+Caveat, unchanged: on a visible tab `gsap.ticker` is still running, so a stepped
+frame is stepped twice. Damping measured through the harness reads slightly
+tighter than production. The bounds in the cursor table above are structural and
+unaffected.
+
+### Trap found while landing it: tsc will not catch a missing `gsap` import
+
+Removing `import { gsap }` from `HoldToBlast.tsx` — which uses `gsap.timeline()`
+— **typechecked completely clean** and failed only at runtime with
+`ReferenceError: gsap is not defined`. GSAP ships a UMD global type declaration,
+so a bare `gsap` resolves at compile time whether or not the module imports it.
+
+`npm run typecheck` passing is not evidence that a gsap-touching file is wired
+up. Load the page.
+
+A second trap on top of it: the dev console buffer replayed those errors long
+after the source was fixed, including one naming a symbol that no longer existed
+anywhere in the tree. Stale console output claiming a fixed bug is still broken
+will cost time if believed. Verify against a freshly loaded document.

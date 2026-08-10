@@ -3,10 +3,11 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useRef } from 'react';
 
-import { cursorDebug, cursorStep } from '@/components/Cursor';
+import { cursorDebug } from '@/components/Cursor';
 import { getLenis } from '@/components/SmoothScroll';
 import { SWEEP } from '@/config/animation';
 import { gsap, ScrollTrigger } from '@/lib/gsap';
+import { runSteps, stepCount } from '@/lib/steps';
 import { blastHandle } from '@/scenes/handles';
 import { nearestOnLine, sweepDebug, sweepScreen } from '@/scenes/sweep';
 import { useScene } from '@/store/scene';
@@ -90,6 +91,14 @@ export function DevLoop() {
         // Lenis integrates its own easing from the timestamp it is handed.
         getLenis()?.raf(stamp);
 
+        // Every DOM-side readout — preloader counter, cursor, rails, marquee.
+        // `gsap.updateRoot()` above advances tweens but does NOT dispatch
+        // gsap.ticker callbacks, so without this line the whole DOM layer is
+        // frozen at whatever the last real frame left it at, and a screenshot
+        // taken after tick() is evidence for the 3D scene and nothing else.
+        // Ordered here to mirror production: after Lenis, before advance().
+        runSteps(dt, stamp);
+
         // THREE.Clock derives delta from wall time. Rewinding oldTime makes
         // getDelta() report exactly dt, so 60 steps really is one simulated
         // second no matter how fast this loop actually runs. `running` is
@@ -123,6 +132,7 @@ export function DevLoop() {
         gsapT += 1 / 60;
         gsap.updateRoot(gsapT);
         getLenis()?.raf(mark);
+        runSteps(1 / 60, mark);
         clock.running = true;
         clock.oldTime = performance.now() - 1000 / 60;
         gl.info.reset();
@@ -425,8 +435,10 @@ export function DevLoop() {
         // Seed: put the pointer down and let everything settle so the first
         // measured frame is steady-state motion, not the initial catch-up.
         window.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true, pointerType: 'mouse' }));
+        // `tick()` now drives the step registry, so it steps the cursor too.
+        // The extra `cursorStep` loop that used to be here would double-step it
+        // and report damping at twice its configured rate.
         tick(dt, 30);
-        for (let w = 0; w < 30; w++) cursorStep(dt);
 
         const ringGap: number[] = [];
         const dotGap: number[] = [];
@@ -434,7 +446,6 @@ export function DevLoop() {
           x += perFrame;
           window.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true, pointerType: 'mouse' }));
           tick(dt, 1);
-          cursorStep(dt);
           ringGap.push(Math.hypot(cursorDebug.targetX - cursorDebug.ringX, cursorDebug.targetY - cursorDebug.ringY));
           dotGap.push(Math.hypot(cursorDebug.targetX - cursorDebug.dotX, cursorDebug.targetY - cursorDebug.dotY));
         }
@@ -447,7 +458,6 @@ export function DevLoop() {
         let framesToConverge = 0;
         while (framesToConverge < 120) {
           tick(dt, 1);
-          cursorStep(dt);
           framesToConverge++;
           if (Math.hypot(cursorDebug.targetX - cursorDebug.ringX, cursorDebug.targetY - cursorDebug.ringY) < 1) break;
         }
@@ -583,6 +593,14 @@ export function DevLoop() {
       drawCalls: gl.info.render.calls,
       triangles: gl.info.render.triangles,
       programs: gl.info.programs?.length ?? 0,
+      /**
+       * DOM-side callbacks `tick()` is driving. A zero here on a page that
+       * plainly has a cursor and a marquee means the step registry is not
+       * connected and every DOM-side observation through the harness is
+       * worthless again — which is the exact failure this number exists to
+       * make visible instead of silent.
+       */
+      steps: stepCount(),
     });
 
     /** Move the virtual pointer without a real mouse. */

@@ -3,7 +3,8 @@
 import { useRef } from 'react';
 
 import { MARQUEE } from '@/config/animation';
-import { gsap, ScrollTrigger, useGsap } from '@/lib/gsap';
+import { ScrollTrigger, useGsap } from '@/lib/gsap';
+import { addStep } from '@/lib/steps';
 import { useScene } from '@/store/scene';
 
 /**
@@ -99,11 +100,10 @@ export function Marquee() {
         innerEl.style.transform = `skewX(${skew}deg)`;
       };
 
-      const onTick = (_t: number, deltaMs: number) => tick(deltaMs / 1000);
-      gsap.ticker.add(onTick);
+      const unstep = addStep(tick);
 
       return () => {
-        gsap.ticker.remove(onTick);
+        unstep();
         ro.disconnect();
         st.kill();
       };

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { gsap } from '@/lib/gsap';
+import { addStep } from '@/lib/steps';
 
 /**
  * Run a callback on the DOM-side animation frame.
@@ -21,12 +21,12 @@ import { gsap } from '@/lib/gsap';
  *   before `useFrame` reads them. A readout registered here therefore never
  *   paints a value the scene has already moved past.
  *
- *   NOT CONTROL, YET — anything registered here is invisible to the dev QA
- *   harness. `__qa.tick()` advances the global timeline with
- *   `gsap.updateRoot()`, which does NOT dispatch ticker callbacks, so every
- *   consumer of this hook has never been stepped by hand. Any DOM-side
- *   behaviour previously "verified" through the harness was read off a frame
- *   that had not advanced. A step registry to fix this lands separately.
+ *   CONTROL — this routes through the step registry in lib/steps.ts, so the
+ *   dev QA harness can advance it by hand. A bare `gsap.ticker.add` cannot be:
+ *   `__qa.tick()` advances the global timeline with `gsap.updateRoot()`, which
+ *   does not dispatch ticker callbacks. Every DOM-side behaviour "verified"
+ *   through the harness before that registry existed was read off a frame that
+ *   had not advanced. Use this hook, or `addStep`, and never `ticker.add`.
  *
  * `delta` is in seconds and already lag-smoothed off.
  */
@@ -36,8 +36,6 @@ export function useTicker(fn: (delta: number, time: number) => void, enabled = t
 
   useEffect(() => {
     if (!enabled) return;
-    const handler = (time: number, delta: number) => saved.current(delta / 1000, time);
-    gsap.ticker.add(handler);
-    return () => gsap.ticker.remove(handler);
+    return addStep((delta, time) => saved.current(delta, time));
   }, [enabled]);
 }

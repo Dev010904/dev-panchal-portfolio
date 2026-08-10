@@ -3,8 +3,8 @@
 import { useEffect, useRef } from 'react';
 
 import { CURSOR } from '@/config/animation';
-import { gsap } from '@/lib/gsap';
 import { pointerHandle } from '@/lib/pointer';
+import { addStep } from '@/lib/steps';
 import { useScene } from '@/store/scene';
 
 /**
@@ -55,19 +55,18 @@ export const cursorDebug = {
 };
 
 /**
- * The frame step, hoisted so it can be driven with an exact dt.
+ * `cursorStep` used to be exported here so the QA harness could drive the
+ * cursor by hand. It is gone: the cursor now registers through the step
+ * registry (lib/steps.ts), so `__qa.tick()` advances it along with every other
+ * DOM-side readout, and a per-component escape hatch is exactly the pattern the
+ * registry replaces.
  *
- * `__qa.tick()` calls `gsap.updateRoot()`, which advances the global timeline
- * but does NOT dispatch `gsap.ticker` callbacks — so nothing registered with
- * `gsap.ticker.add` (this cursor, every `useTicker` consumer) was ever stepped
- * by the harness. Measuring damping through it therefore reported a cursor that
- * had simply never moved.
- *
- * Exporting the step means the harness drives the exact production code with an
- * exact simulated dt, which is the only way to measure frame-rate-independent
- * damping in a window whose real rAF is being throttled by occlusion.
+ * The history is worth keeping. `gsap.updateRoot()` advances the global
+ * timeline but does not dispatch `gsap.ticker` callbacks, so before the
+ * registry existed nothing registered with `ticker.add` was ever stepped by the
+ * harness — and the first attempt to measure cursor damping through it returned
+ * zeros at every speed, faithfully reporting a cursor that had never moved.
  */
-export let cursorStep: (dt: number) => void = () => {};
 export function Cursor() {
   const ring = useRef<HTMLDivElement>(null);
   const dot = useRef<HTMLDivElement>(null);
@@ -166,13 +165,10 @@ export function Cursor() {
       void visible;
     };
 
-    const tick = (_time: number, deltaMs: number) => step(deltaMs / 1000);
-    cursorStep = step;
-    gsap.ticker.add(tick);
+    const unstep = addStep((delta) => step(delta));
 
     return () => {
-      gsap.ticker.remove(tick);
-      cursorStep = () => {};
+      unstep();
       document.documentElement.classList.remove('has-cursor');
     };
   }, [reducedMotion]);

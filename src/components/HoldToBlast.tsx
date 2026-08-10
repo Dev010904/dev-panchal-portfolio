@@ -3,7 +3,11 @@
 import { useEffect, useRef } from 'react';
 
 import { BLAST } from '@/config/animation';
+// `gsap` is still needed here for the timeline at the top of the effect.
+// TypeScript will NOT catch its absence: gsap ships a UMD global declaration,
+// so a missing import typechecks clean and fails only at runtime.
 import { gsap } from '@/lib/gsap';
+import { addStep } from '@/lib/steps';
 import { blastHandle } from '@/scenes/handles';
 import { useScene } from '@/store/scene';
 
@@ -174,8 +178,8 @@ export function HoldToBlast() {
       target = 0;
     };
 
-    const tick = (_time: number, deltaMs: number) => {
-      const dt = Math.min(deltaMs / 1000, 0.05);
+    const tick = (delta: number) => {
+      const dt = Math.min(delta, 0.05);
 
       // ── The hold ────────────────────────────────────────────────────────────
       if (blastHandle.held) {
@@ -268,10 +272,10 @@ export function HoldToBlast() {
     // A press that ends outside the window still has to release the hold, or
     // the mark stays shattered until the next click.
     window.addEventListener('blur', onUp);
-    gsap.ticker.add(tick);
+    const unstep = addStep(tick);
 
     return () => {
-      gsap.ticker.remove(tick);
+      unstep();
       tl.kill();
       clearTargets();
       window.removeEventListener('pointerdown', onDown);
