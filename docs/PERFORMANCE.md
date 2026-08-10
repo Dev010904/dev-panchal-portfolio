@@ -336,6 +336,28 @@ that one loop drives "every DOM readout" and can be stepped by hand is not true
 of the readouts. The first attempt to measure cursor damping through it returned
 zeros for every speed — a cursor that had simply never moved.
 
+### Every prior DOM-side verification through the harness is void
+
+This has the same shape as the `gl.info` bug and the same consequence, so it
+gets the same warning.
+
+**Any DOM-side behaviour ever "verified" by stepping `__qa.tick()` was checked
+on a frame that had not advanced.** That includes, at minimum:
+
+- the **preloader counter** — driven by `useTicker`, so its lerp never ran; a
+  stepped frame showed whatever value it was already displaying
+- the **manifesto stagger** and any other `useTicker`-driven reveal
+- the **cursor** — ring and dot both, at every position and speed
+
+A screenshot taken after `__qa.tick(1/60, 120)` is genuine evidence for the 3D
+scene, which R3F's `advance()` really does step, and is **no evidence at all**
+for any of the above. If a past session reported one of these as verified, it
+was reading a static frame. Re-check anything that matters.
+
+Tweens are the exception and are fine: `gsap.updateRoot()` is exactly how the
+global timeline advances, so ScrollTrigger-scrubbed and tweened DOM state does
+step correctly.
+
 Worked around by exporting `cursorStep(dt)` from `Cursor.tsx` and driving it
 directly. The general fix — a step registry the harness can drive, replacing
 direct `gsap.ticker.add` calls — belongs with the frame-loop unification.
