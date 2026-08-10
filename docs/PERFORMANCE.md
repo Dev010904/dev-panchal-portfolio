@@ -228,12 +228,112 @@ discarded.
 
 ---
 
-## Open work
+## The frame-loop question, answered — 2026-08-10
 
-The frame-loop unification (driving R3F from `gsap.ticker` instead of its own
-rAF) has **not** been measured yet. It is to be landed as an isolated commit
-with an after-table appended here under identical conditions, and reverted if
-the comparison or the feel regresses.
+**There is no scroll lag. The unification is not being done.**
+
+The hypothesis recorded above — that `<SceneRoot />` mounting before
+`<SmoothScroll>` leaves R3F's rAF registered first, so the camera renders from
+last frame's scroll — is **false**. It was a reasonable guess from the mount
+order and it is wrong about where the registration happens.
+
+### Derived from source
+
+Three facts, each checked in the installed library code rather than recalled:
+
+1. **`gsap.ticker`'s rAF is registered at module-evaluation time.**
+   `gsap-core.js:4459` ends the module with `_windowExists() && _wake()`.
+   `wake()` sets `_tickerActive = 1` and calls `_tick(2)`; since `2 !== true`
+   that is not the "manual" path, so it runs `_id = _req(_tick)` and the loop is
+   live. This happens when the bundle is parsed — **before any React effect**.
+   It does not wait for a listener, so `SmoothScroll`'s `gsap.ticker.add()`
+   does not determine gsap's slot.
+
+2. **R3F's rAF is registered when the Canvas root is configured**, inside a
+   React effect — strictly after module evaluation.
+
+3. **Both loops re-register at the top of their own callback**, so the initial
+   order is preserved in perpetuity:
+   - gsap: `manual || (_id = _req(_tick));` sits *above* the listener dispatch
+     loop, with a source comment saying the request is deliberately made before
+     dispatch to keep timing stable.
+   - R3F: `frame = requestAnimationFrame(loop)` is the **first statement** of
+     `loop`.
+
+Therefore `gsap.ticker` runs first, every frame, permanently. The write/read
+chain resolves in the correct order within a single frame:
+
+```
+gsap.ticker dispatch ─┬─ SmoothScroll: lenis.raf(t)
+                      │    └─ Lenis 'scroll' event (synchronous)
+                      │         └─ ScrollTrigger.update()
+                      │              └─ Deconstruction onUpdate:
+                      │                   markHandles.current.progress.value = self.progress
+                      │                                                        ▲ WRITE
+R3F loop ─────────────┴─ useFrame → CameraRig reads that value ────────────────┘ READ
+                                     and renders
+```
+
+**The mount order in `layout.tsx` is a red herring.** It would only matter if
+gsap's ticker started lazily on its first `.add()`. It does not.
+
+### Confirmed by measurement — `__qa.loopOrder()`
+
+Four runs, tab visible, dev build, ~35Hz:
+
+| frames | gsapFirst | r3fFirst | freshScroll | staleScroll | single-loop frames |
+|---|---|---|---|---|---|
+| 118 | 118 | 0 | 118 | 0 | 0 |
+| 88 | 88 | 0 | 88 | 0 | 0 |
+| 88 | 88 | 0 | 88 | 0 | 0 |
+| 88 | 88 | 0 | 88 | 0 | 0 |
+
+Unanimous and reproducible. `freshScroll` is the direct data-path check, not an
+inference from callback order: the probe samples `lenis.scroll` at both points,
+and its ticker listener is appended so it runs *after* the frame's scroll has
+been integrated. Every rendered frame saw the scroll value produced by that same
+frame.
+
+**Unanimity is the predicted result here, not a suspicious one.** Because both
+loops re-register at the top of their callbacks, the ordering is structurally
+invariant once established — a *mixed* result would have been the alarming
+outcome, and would have meant something was re-registering mid-callback.
+
+### What was done instead
+
+Per the decision rule: source proved no lag, so no unification. The README and
+`lib/useTicker.ts` claimed one loop and were describing an intention rather than
+the code; both were corrected. `Marquee`'s stray rAF was removed as an isolated
+change, and the step registry landed on its own.
+
+### `scrollLag` was deleted
+
+It returned a best-fit frame lag of **3, 3, 3, 2, 1, 0 across six runs on an
+unchanged page**. Two independent defects, either one fatal:
+
+- **The estimator could not discriminate.** The camera is exponentially damped,
+  so its velocity is a smoothed copy of the scroll velocity and correlates
+  highly at *every* candidate lag. One run returned
+  `[0.9571, 0.9570, 0.9569, 0.9556]` — four decimal places of nothing. The three
+  1400px runs rose monotonically across all four lags and never peaked, so the
+  estimator had not found a maximum at all; it was biased toward higher lag by
+  construction.
+- **It needed real frames it never got.** ~96 samples against an expected ~240:
+  throttling was active throughout.
+
+A probe that returns four different answers for one page is worse than no probe,
+because a future session will believe one of them.
+
+`loopOrder()` replaces it and is a different kind of instrument. The question is
+an **ordering** property with two possible answers, not a statistic to be
+estimated, and ordering is **throttle-invariant** — occlusion changes how often
+frames happen, never the order of callbacks within one. It is one of the few
+things here that is safe to measure while driving the browser.
+
+`loopOrderSelfTest()` validates the analyser against synthetic logs for both
+orderings, with a known one-frame lag injected in the second. It must report
+`gsapFirst 58/58, freshScroll 58` and `r3fFirst 58/58, staleScroll 58`. **It was
+run and passed before the real probe was trusted** — the step `scrollLag` skipped.
 
 ---
 

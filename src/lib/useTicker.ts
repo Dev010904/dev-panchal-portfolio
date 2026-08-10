@@ -4,22 +4,29 @@ import { useEffect, useRef } from 'react';
 import { gsap } from '@/lib/gsap';
 
 /**
- * Run a callback on the single shared animation frame.
+ * Run a callback on the DOM-side animation frame.
  *
- * Nothing on this site is allowed its own requestAnimationFrame loop. There is
- * exactly one, gsap.ticker, and Lenis, ScrollTrigger, the R3F render loop and
- * every DOM readout hang off it. That buys three things:
+ * ACCURACY NOTE. This comment used to say there was exactly one rAF loop on the
+ * site and that gsap.ticker drove the R3F render loop too. That was never true.
+ * There are two loops — gsap.ticker for Lenis, ScrollTrigger and DOM readouts,
+ * and R3F's own for rendering — and they are deliberately left separate. See
+ * docs/PERFORMANCE.md for why unifying them was investigated and rejected.
  *
- *   ORDERING — scroll is integrated, then triggers update, then the scene
- *   renders, then readouts paint. Independent rAF loops interleave in whatever
- *   order they were registered, so a readout can paint a value from the
- *   previous frame and you get a one-frame lag that looks like jank.
+ * What is actually guaranteed, and it is the guarantee that matters:
  *
- *   COST — n loops means n callback dispatches and n chances to force a style
- *   recalculation. One loop means one.
+ *   ORDERING — gsap.ticker's rAF is registered at module-evaluation time and
+ *   R3F's when the Canvas root is configured in a React effect, and both
+ *   re-register at the top of their own callback. So gsap runs first, every
+ *   frame, permanently. Scroll is integrated and pushed into the scene handles
+ *   before `useFrame` reads them. A readout registered here therefore never
+ *   paints a value the scene has already moved past.
  *
- *   CONTROL — a single loop can be driven manually, which is what makes the
- *   dev QA harness and any offline frame capture possible at all.
+ *   NOT CONTROL, YET — anything registered here is invisible to the dev QA
+ *   harness. `__qa.tick()` advances the global timeline with
+ *   `gsap.updateRoot()`, which does NOT dispatch ticker callbacks, so every
+ *   consumer of this hook has never been stepped by hand. Any DOM-side
+ *   behaviour previously "verified" through the harness was read off a frame
+ *   that had not advanced. A step registry to fix this lands separately.
  *
  * `delta` is in seconds and already lag-smoothed off.
  */

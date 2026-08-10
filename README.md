@@ -75,10 +75,23 @@ work mocks at `-60`, and each interior page's structure below that. Changing
 section or route flies the camera. Nothing tears down, so there is no white
 flash and no re-initialised GL context.
 
-**One animation loop.** `gsap.ticker` drives Lenis, ScrollTrigger, the R3F
-render loop and every DOM readout. No component owns a `requestAnimationFrame`.
-That buys deterministic ordering, one callback dispatch per frame, and the
-ability to drive the whole site manually — which is what the QA harness does.
+**Two animation loops, in a proven order.** This used to claim there was one.
+There is not, and the claim was never true — it described an intention.
+
+- `gsap.ticker` drives Lenis, ScrollTrigger and every DOM readout.
+- R3F runs its own rAF for the render loop (`<Canvas>` has no `frameloop` prop).
+
+They are not unified, and after investigation they are deliberately not going to
+be. The ordering between them is **structurally fixed, not incidental**: gsap's
+rAF is registered at module-evaluation time and R3F's when the Canvas root is
+configured in a React effect, and both re-register at the top of their own
+callback — so gsap runs first, every frame, permanently. Scroll is integrated
+and pushed into the scene handles before the camera reads them in `useFrame`.
+
+Measured 118/118 and 88/88 frames across four runs with zero exceptions. The
+full derivation, the evidence, and why the obvious "unify them" fix would have
+been solving a problem that does not exist are in
+[docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 **Nothing is downloaded.** The mark, the interior structures, the particle
 fields and the environment lighting are all generated in code. There is no
@@ -99,7 +112,15 @@ __qa.reducedMotion(true)    // force the reduced-motion path
 __qa.state()                // scene state snapshot
 __qa.snapshot()             // draw calls, triangles, programs
 __qa.inspect()              // flat scene graph dump
+__qa.loopOrder(120)         // which rAF loop runs first — real frames
+__qa.loopOrderSelfTest()    // validate that probe before believing it
 ```
+
+> **`tick()` does not step DOM-side readouts.** It advances the 3D scene and the
+> GSAP global timeline, but *not* `gsap.ticker` callbacks — so the preloader
+> counter, the manifesto stagger and the cursor are frozen while it runs. A
+> screenshot after `tick()` is evidence for the scene and evidence for nothing
+> in the DOM layer. See docs/PERFORMANCE.md.
 
 This exists because Chrome throttles `requestAnimationFrame` to zero in a
 hidden or occluded tab, so an automated screenshot of a WebGL page otherwise

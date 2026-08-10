@@ -29,6 +29,9 @@ import { useScene } from '@/store/scene';
  * only looks right playing forwards is a bug, and you cannot find that bug by
  * watching it play forwards.
  */
+/** One callback entry in the `loopOrder` interleaving log. `who`: 0 gsap, 1 R3F. */
+type OrderRow = { who: 0 | 1; t: number; scroll: number };
+
 export function DevLoop() {
   const advance = useThree((s) => s.advance);
   const clock = useThree((s) => s.clock);
@@ -46,11 +49,23 @@ export function DevLoop() {
    */
   const probe = useRef({ pointerX: 0, at: 0, frame: 0 });
 
+  /**
+   * Interleaving log for `loopOrder()`. Written from BOTH loops — the R3F
+   * `useFrame` below, and a `gsap.ticker` listener installed only while the
+   * probe runs. Off by default, so the render path pays one boolean test for
+   * it. `who` is numeric rather than a string to keep the probe itself out of
+   * the allocation profile it might one day be used to measure.
+   */
+  const order = useRef<{ on: boolean; rows: OrderRow[] }>({ on: false, rows: [] });
+
   useFrame(() => {
     const p = probe.current;
     p.pointerX = useScene.getState().pointer[0];
     p.at = performance.now();
     p.frame++;
+
+    const o = order.current;
+    if (o.on) o.rows.push({ who: 1, t: p.at, scroll: getLenis()?.scroll ?? 0 });
   });
 
   useEffect(() => {
@@ -215,83 +230,168 @@ export function DevLoop() {
     };
 
     /**
-     * SCROLL-PATH STALENESS — how many frames the rendered camera is behind the
-     * scroll position that produced it.
+     * LOOP ORDERING — which rAF callback runs first, `gsap.ticker` or R3F's.
      *
-     * This is the path where the multi-rAF-loop architecture can actually hurt,
-     * and it has the opposite shape to the pointer path. A pointer event is
-     * dispatched before any rAF callback in the frame, so every loop sees it in
-     * the same frame regardless of order. Scroll is not an event we receive —
-     * it is a value INTEGRATED by Lenis inside a gsap.ticker callback, and then
-     * read by the camera inside R3F's separate useFrame. If R3F's rAF is
-     * registered first, the camera renders from the PREVIOUS frame's scroll,
-     * every frame, forever.
+     * REPLACES `scrollLag`, WHICH WAS DELETED FOR BEING WRONG. That probe
+     * cross-correlated camera velocity against scroll velocity and returned a
+     * best-fit lag of 3, 3, 3, 2, 1 and 0 across six runs on an unchanged page.
+     * Two defects, both fatal: the camera is exponentially damped, so its
+     * velocity is a smoothed copy of the scroll velocity and correlates highly
+     * at EVERY lag (one run returned 0.9571/0.9570/0.9569/0.9556 — four decimal
+     * places of nothing); and it needed hundreds of real frames from a window
+     * that was being throttled to ~96 samples against an expected 240. It was
+     * measuring its own noise.
      *
-     * Measured by recording, per rendered frame, the Lenis scroll value and the
-     * camera Y that frame drew with, then checking which scroll sample the
-     * camera actually corresponds to. Run on REAL frames while Lenis eases
-     * toward a target, because forcing frames imposes our own ordering and
-     * would answer a question nobody asked.
+     * WHAT THIS MEASURES INSTEAD. The question was never "how many frames of
+     * lag" — it was "does the camera read scroll before or after the frame
+     * writes it", which is an ORDERING property with two possible answers, not
+     * a statistic. Both loops are dispatched from the same rAF callback list,
+     * so within one frame they run back-to-back and synchronously; the next
+     * frame is a whole refresh interval away. Logging both and clustering on
+     * the time gap recovers the intra-frame order exactly.
+     *
+     * AND IT SURVIVES THIS ENVIRONMENT. Occlusion throttling changes how OFTEN
+     * frames happen, never the order of callbacks within one. Widening the gaps
+     * between clusters cannot reorder the entries inside them. This is the rare
+     * thing here that is safe to measure while driving the browser.
+     *
+     * `scroll` is sampled at both points, so the fresh/stale columns are direct
+     * evidence on the data path rather than an inference from callback order:
+     * this listener is appended, so it runs AFTER SmoothScroll's `lenis.raf`,
+     * i.e. after the frame's scroll has been integrated and ScrollTrigger has
+     * pushed it into `markHandles`.
+     *
+     * Validate with `loopOrderSelfTest()` before believing it.
      */
-    const scrollLag = async (distance = 1400) => {
-      const lenis = getLenis();
-      if (!lenis) return 'no lenis (reduced motion?)';
+    const loopOrder = async (frames = 120) => {
+      const o = order.current;
+      o.rows = [];
 
-      const start = lenis.scroll;
-      const samples: { scroll: number; camY: number; t: number }[] = [];
-      let stop = false;
-
-      const collect = () => {
-        samples.push({ scroll: lenis.scroll, camY: camera.position.y, t: performance.now() });
-        if (!stop && samples.length < 240) requestAnimationFrame(collect);
+      const onTick = () => {
+        o.rows.push({ who: 0, t: performance.now(), scroll: getLenis()?.scroll ?? 0 });
       };
-      requestAnimationFrame(collect);
 
-      lenis.scrollTo(start + distance, { duration: 1.2 });
-      await new Promise((r) => setTimeout(r, 1600));
-      stop = true;
+      const lenis = getLenis();
+      const from = lenis?.scroll ?? 0;
+      // Sample while the scroll is actually moving. A stationary page makes the
+      // fresh/stale columns vacuously equal and proves nothing.
+      lenis?.scrollTo(from + 1600, { duration: frames / 60 });
 
-      // Correlate camera against scroll at 0, 1 and 2 frames of delay. The
-      // offset with the lowest total error is how stale the render is.
-      const moving = samples.filter((s, i) => i > 2 && Math.abs(s.scroll - samples[i - 1].scroll) > 0.5);
-      if (moving.length < 12) return { samples: samples.length, moving: moving.length, note: 'not enough motion captured' };
+      gsap.ticker.add(onTick);
+      o.on = true;
 
-      // Velocity series. Sign agreement would be useless here — it is constant
-      // through a monotonic ease. The EASE PROFILE is the signal: Lenis
-      // accelerates and decelerates, so cross-correlating the two velocity
-      // series discriminates phase properly.
-      const dScroll: number[] = [];
-      const dCam: number[] = [];
-      for (let i = 1; i < samples.length; i++) {
-        dScroll.push(samples[i].scroll - samples[i - 1].scroll);
-        dCam.push(samples[i].camY - samples[i - 1].camY);
+      await new Promise<void>((resolve) => {
+        let n = 0;
+        const step = () => (++n >= frames ? resolve() : requestAnimationFrame(step));
+        requestAnimationFrame(step);
+      });
+
+      o.on = false;
+      gsap.ticker.remove(onTick);
+      lenis?.scrollTo(from, { immediate: true });
+
+      return analyseOrder(o.rows);
+    };
+
+    /**
+     * Cluster the interleaved log by time gap and read off the order.
+     *
+     * `gapMs` only has to separate "same frame" from "next frame". Callbacks in
+     * one dispatch land sub-millisecond apart; the next frame is ≥8ms away even
+     * on a 120Hz display, and throttling only pushes it further out.
+     */
+    const analyseOrder = (rows: OrderRow[], gapMs = 4) => {
+      const clusters: OrderRow[][] = [];
+      for (const r of rows) {
+        const last = clusters[clusters.length - 1];
+        if (last && r.t - last[last.length - 1].t <= gapMs) last.push(r);
+        else clusters.push([r]);
       }
 
-      const corrAt = (lagF: number) => {
-        let sxy = 0;
-        let sxx = 0;
-        let syy = 0;
-        for (let i = lagF; i < dCam.length; i++) {
-          const a = dCam[i];
-          const b = dScroll[i - lagF];
-          sxy += a * b;
-          sxx += a * a;
-          syy += b * b;
-        }
-        const d = Math.sqrt(sxx * syy);
-        return d > 1e-12 ? Number((sxy / d).toFixed(4)) : 0;
-      };
+      // Drop the first and last: the probe arms and disarms mid-frame, so those
+      // two can legitimately be missing a participant through no fault of the
+      // thing being measured.
+      const body = clusters.slice(1, -1);
 
-      // Absolute value: camera Y moves opposite to scroll, so a perfect match
-      // is -1. Phase is what matters, not the sign of the gain.
-      const corr = [0, 1, 2, 3].map((l) => Math.abs(corrAt(l)));
-      const best = corr.indexOf(Math.max(...corr));
+      let gsapFirst = 0;
+      let r3fFirst = 0;
+      let gsapOnly = 0;
+      let r3fOnly = 0;
+      let freshScroll = 0;
+      let staleScroll = 0;
+
+      for (const c of body) {
+        const g = c.findIndex((r) => r.who === 0);
+        const t = c.findIndex((r) => r.who === 1);
+        if (t < 0) {
+          gsapOnly++;
+          continue;
+        }
+        if (g < 0) {
+          r3fOnly++;
+          continue;
+        }
+        if (g < t) gsapFirst++;
+        else r3fFirst++;
+        // Did the rendered frame see the scroll this frame's dispatch produced?
+        if (c[t].scroll === c[g].scroll) freshScroll++;
+        else staleScroll++;
+      }
+
+      const decided = gsapFirst + r3fFirst;
       return {
-        samples: samples.length,
-        movingFrames: moving.length,
-        correlationByFrameLag: corr,
-        bestFitFrameLag: best,
-        totalScroll: Number((lenis.scroll - start).toFixed(1)),
+        frames: body.length,
+        gsapFirst,
+        r3fFirst,
+        /** Frames where only one loop ran — gsap skipping a tick, or a dropped render. */
+        gsapOnly,
+        r3fOnly,
+        freshScroll,
+        staleScroll,
+        verdict:
+          decided < 20
+            ? 'INCONCLUSIVE — too few frames with both loops present'
+            : gsapFirst === decided
+              ? 'gsap.ticker first, every frame — scroll is written before the camera reads it (NO LAG)'
+              : r3fFirst === decided
+                ? 'R3F first, every frame — the camera renders last frame’s scroll (ONE-FRAME LAG)'
+                : `MIXED — ${gsapFirst}/${decided} frames gsap-first; ordering is not stable`,
+      };
+    };
+
+    /**
+     * Validate the analyser against logs whose answer is known by construction,
+     * one for each possible ordering.
+     *
+     * This exists because `scrollLag` was trusted on an unknown signal without
+     * ever being shown to report a KNOWN one correctly, and it spent six runs
+     * returning four different answers for the same page. A probe that has not
+     * passed this is not evidence.
+     *
+     * Expect `syntheticGsapFirst` to report 58 gsapFirst / 58 freshScroll and
+     * `syntheticR3fFirst` to report 58 r3fFirst / 58 staleScroll.
+     */
+    const loopOrderSelfTest = () => {
+      const build = (gsapLeads: boolean, n = 60) => {
+        const rows: OrderRow[] = [];
+        let t = 1000;
+        let scroll = 0;
+        for (let i = 0; i < n; i++) {
+          scroll += 7; // this frame's scroll integration
+          // When R3F leads it renders before the integration lands, so the
+          // value it records is the PREVIOUS frame's — a synthetic 1-frame lag.
+          if (gsapLeads) {
+            rows.push({ who: 0, t: t + 0.2, scroll }, { who: 1, t: t + 0.4, scroll });
+          } else {
+            rows.push({ who: 1, t: t + 0.2, scroll: scroll - 7 }, { who: 0, t: t + 0.4, scroll });
+          }
+          t += 16.7;
+        }
+        return rows;
+      };
+      return {
+        syntheticGsapFirst: analyseOrder(build(true)),
+        syntheticR3fFirst: analyseOrder(build(false)),
       };
     };
 
@@ -563,7 +663,8 @@ export function DevLoop() {
       state,
       blast,
       cursorLag,
-      scrollLag,
+      loopOrder,
+      loopOrderSelfTest,
       lightning,
       lightningScan,
       lightningSweep,
