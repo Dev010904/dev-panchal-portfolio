@@ -113,7 +113,84 @@ All times in milliseconds.
 - **Footer is nearly free on the CPU** and proves the harness is measuring
   submission rather than GPU completion.
 
-A warm re-measure was attempted and could not be completed — see below.
+## Baseline — warm, 2026-08-10, before the frame-loop unification
+
+Same build, Edge (`Edg/`), GPU process healthy, window 1912×901 CSS, DPR 1.
+One `profile(60)` discarded at each position first, so shader compilation is
+excluded. **This is the steady-state baseline the unification must beat.**
+
+| Position | p50 | p95 | >16.7ms | draws | tris |
+|---|---|---|---|---|---|
+| hero | **1.8** | 15.4 | 6/150 | 87 | 45,543 |
+| deconstruction | **1.5** | 8.0 | 1/150 | 81 | 45,543 |
+| lab | **1.0** | 2.6 | 4/150 | 72 | 7,137 |
+| work | **1.0** | 3.0 | 1/150 | 76 | 7,249 |
+| footer | **2.9** | 9.0 | 4/150 | 79 | 7,249 |
+
+Warm p50 is 1–3ms everywhere — an order of magnitude under the cold figures and
+comfortably inside a 16.7ms budget. **The CPU frame is not the problem.**
+
+### The tail in this table is not trustworthy
+
+`profile()` runs its whole loop inside one synchronous JS task, so a single
+browser-level deschedule lands entirely in one sample. That produced p99/worst
+values of 1976ms, 2387ms, 3516ms and 2095ms in this run — implausible as frame
+work on a page whose p50 is 1.8ms, and not reproducible in position.
+
+**Compare p50 and p95 only.** The p99 and worst columns are omitted above for
+that reason. Fixing this properly means sampling across real animation frames
+rather than a tight loop, which is what `latency()` already does.
+
+---
+
+## Input-to-render latency — the number that decides how it feels
+
+```js
+await __qa.latency(40)
+```
+
+Milliseconds from a `pointermove` being dispatched to the first **rendered
+frame that actually used it**, measured on real animation frames. A frame-time
+table cannot see this, and it is what "the cursor feels connected" means.
+
+Baseline, hero, before the frame-loop unification:
+
+```
+samples 40 · medianMs 28.4 · medianFrames 1 · maxFrames 1
+```
+
+### What this rules out
+
+`medianFrames: 1` and `maxFrames: 1` mean **the pointer is consumed by the very
+next rendered frame, every single time.** Not once in 40 samples did input wait
+two frames.
+
+That is a negative result against the obvious hypothesis. The site runs three
+independent rAF loops — `gsap.ticker`, R3F's internal loop, and a raw one in
+`Marquee.tsx` — which contradicts the "one loop" invariant stated in the README
+and in `lib/useTicker.ts`. The prediction was that this leaves input a frame
+stale. **For the pointer path it does not**, and the reason is structural:
+pointer events are dispatched before rAF callbacks within a frame, so whichever
+loop runs first still sees a value written earlier in the same frame.
+
+The 28.4ms median is therefore not a queueing stall — it is the wait for the
+next frame boundary, which implies this window was presenting at roughly 30Hz
+rather than 60Hz, plus a partial frame of phase.
+
+### What this does NOT rule out
+
+The **scroll** path has the opposite shape and has not been measured. Lenis is
+driven from `gsap.ticker`, `ScrollTrigger.update` fires from Lenis' scroll
+event, and the camera reads scroll-derived state inside R3F's `useFrame`. Those
+are two different rAF callbacks, and `<SceneRoot />` mounts before
+`<SmoothScroll>` in `app/layout.tsx`, so R3F's loop is plausibly registered
+first — which would render the scene from *last* frame's scroll position every
+frame.
+
+That is a genuine one-frame lag mechanism, it is specific to scroll rather than
+pointer, and it must be measured before and after the unification rather than
+assumed. Measuring pointer latency and declaring scroll fixed would be exactly
+the mistake the `gl.info` bug already taught.
 
 ---
 
@@ -157,3 +234,37 @@ The frame-loop unification (driving R3F from `gsap.ticker` instead of its own
 rAF) has **not** been measured yet. It is to be landed as an isolated commit
 with an after-table appended here under identical conditions, and reverted if
 the comparison or the feel regresses.
+
+---
+
+## §3.8 — lightning arming boundary, verified empirically
+
+```js
+__qa.lightningScan(id, y)   // frozen projection, 479 samples across 1912px
+```
+
+Scanned at `y = innerHeight / 2`, 4px step, threshold `radius = 16`. Distances
+in CSS px, measured by the renderer's own `nearestOnLine`.
+
+| Line | closest approach | armed band | widest armed | closest un-armed |
+|---|---|---|---|---|
+| a | 0.42px @ x=1360 | [1344, 1376] — 32px | 14.91 | 17.71 |
+| b | 0.96px @ x=988 | [968, 1008] — 40px | 15.84 | 16.90 |
+| c | 1.45px @ x=1760 | [1748, 1776] — 28px | 13.72 | 16.62 |
+
+**The boundary is exact.** No armed sample exceeds 16.00px; no un-armed sample
+falls below 16.62px. The ~1px dead band between the two is the 4px scan step,
+not slop in the test.
+
+**One contiguous band per line**, ~2×radius wide and centred within 1.5px of the
+stroke. Band width varies with crossing angle — a horizontal scan cuts a
+diagonal line obliquely, so the run along x is `2r / sin θ`, which is why `b`
+reads 40px and `c` reads 28px.
+
+Under the old nearest-vertex test this scan would have returned several disjoint
+bands with ~190px dead gaps between them, each up to 80px wide. It now matches
+the visible stroke.
+
+Hysteresis (arm at 16, release at 22.4) and fire-on-entry are wired but are
+state-machine behaviour over time, not geometry, so they are not visible in a
+single-frame scan. They are covered by the regression pass.

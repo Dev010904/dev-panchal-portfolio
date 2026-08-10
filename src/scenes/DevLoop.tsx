@@ -1,12 +1,13 @@
 'use client';
 
-import { useThree } from '@react-three/fiber';
-import { useEffect } from 'react';
+import { useFrame, useThree } from '@react-three/fiber';
+import { useEffect, useRef } from 'react';
 
 import { getLenis } from '@/components/SmoothScroll';
+import { SWEEP } from '@/config/animation';
 import { gsap, ScrollTrigger } from '@/lib/gsap';
 import { blastHandle } from '@/scenes/handles';
-import { sweepDebug, sweepScreen } from '@/scenes/sweep';
+import { nearestOnLine, sweepDebug, sweepScreen } from '@/scenes/sweep';
 import { useScene } from '@/store/scene';
 
 /**
@@ -33,6 +34,23 @@ export function DevLoop() {
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);
+
+  /**
+   * What the render loop saw, and exactly when.
+   *
+   * Written once per rendered frame and read by `latency()`. The timestamp is
+   * captured HERE rather than by the poller that detects the change, so the
+   * measurement is unaffected by when the poller happens to run — the poller
+   * only discovers that a frame consumed the input, never how long it took.
+   */
+  const probe = useRef({ pointerX: 0, at: 0, frame: 0 });
+
+  useFrame(() => {
+    const p = probe.current;
+    p.pointerX = useScene.getState().pointer[0];
+    p.at = performance.now();
+    p.frame++;
+  });
 
   useEffect(() => {
     if (process.env.NODE_ENV === 'production') return;
@@ -110,6 +128,72 @@ export function DevLoop() {
     };
 
     /**
+     * INPUT-TO-RENDER LATENCY — milliseconds from a pointer event being
+     * dispatched to the first rendered frame that actually used it.
+     *
+     * This is the number that decides whether the cursor and the scroll feel
+     * connected to the hand, and no frame-time table can see it. A page can
+     * render every frame in 4ms and still feel laggy if the value it renders is
+     * one or two frames stale — which is exactly the failure mode of having
+     * several independent rAF loops, because the loop that reads the pointer may
+     * run before the loop that wrote it and then always trails by a frame.
+     *
+     * Deliberately measured on REAL animation frames, not through `tick()`.
+     * Forced advancement collapses the very ordering being measured; the only
+     * honest way to time the production loop is to let it run.
+     */
+    const latency = async (samples = 40) => {
+      const ms: number[] = [];
+      const frames: number[] = [];
+
+      for (let i = 0; i < samples; i++) {
+        // Alternate so every dispatch is a genuine change. Re-sending the same
+        // coordinate would be consumed with no observable difference and the
+        // poll below would match instantly on a stale value.
+        const x = i % 2 === 0 ? Math.round(window.innerWidth * 0.3) : Math.round(window.innerWidth * 0.7);
+        const expect = (x / window.innerWidth) * 2 - 1;
+        const startFrame = probe.current.frame;
+        const t0 = performance.now();
+
+        window.dispatchEvent(
+          new PointerEvent('pointermove', {
+            clientX: x,
+            clientY: Math.round(window.innerHeight * 0.5),
+            bubbles: true,
+            pointerType: 'mouse',
+          }),
+        );
+
+        const settled = await new Promise<boolean>((resolve) => {
+          let waited = 0;
+          const check = () => {
+            if (Math.abs(probe.current.pointerX - expect) < 1e-9) return resolve(true);
+            if (++waited > 30) return resolve(false);
+            requestAnimationFrame(check);
+          };
+          requestAnimationFrame(check);
+        });
+        if (!settled) continue;
+
+        ms.push(probe.current.at - t0);
+        frames.push(probe.current.frame - startFrame);
+      }
+
+      if (!ms.length) return 'no samples settled';
+      const sorted = [...ms].sort((a, b) => a - b);
+      const at = (q: number) => Number(sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))].toFixed(2));
+      return {
+        samples: ms.length,
+        medianMs: at(0.5),
+        p95Ms: at(0.95),
+        worstMs: Number(sorted[sorted.length - 1].toFixed(2)),
+        /** Frames the input waited. 1 is ideal; 2+ means a loop-ordering stall. */
+        medianFrames: frames.sort((a, b) => a - b)[Math.floor(frames.length / 2)],
+        maxFrames: Math.max(...frames),
+      };
+    };
+
+    /**
      * Measured distance from a screen position to each sweep line, and whether
      * that position arms it.
      *
@@ -127,6 +211,60 @@ export function DevLoop() {
         distance: Number(sweepDebug.distance[i].toFixed(2)),
         armed: sweepDebug.inside[i],
       }));
+    };
+
+    /**
+     * Arming-boundary scan against a FROZEN projection.
+     *
+     * `lightningSweep` below dispatches a real pointer event per sample, which
+     * means it advances a frame per sample — and the lines rotate. Across a
+     * 1900px run that is several seconds of rotation, so the geometry being
+     * measured moves while it is measured and the boundary smears.
+     *
+     * This refreshes the projection exactly once and then evaluates the
+     * renderer's own `nearestOnLine` at every cursor position against that one
+     * frozen pose. Nothing ticks, nothing rotates, and the result is the true
+     * shape of the armed region rather than a motion-blurred version of it.
+     */
+    const lightningScan = (
+      lineId: string,
+      y: number,
+      x0 = 0,
+      x1 = window.innerWidth,
+      step = 4,
+    ) => {
+      const idx = sweepScreen.findIndex((l) => l.id === lineId);
+      if (idx < 0) return `no line "${lineId}"`;
+      tick(1 / 60, 1); // one frame: refresh the projection, then freeze
+
+      const radius = SWEEP.strike.radius;
+      const rows: { x: number; d: number; within: boolean }[] = [];
+      for (let x = x0; x <= x1; x += step) {
+        const d = nearestOnLine(idx, x, y).distance;
+        rows.push({ x, d: Number(d.toFixed(2)), within: d <= radius });
+      }
+
+      const inside = rows.filter((r) => r.within);
+      const outside = rows.filter((r) => !r.within);
+      // Where the stroke actually is: the run's single closest approach.
+      const closest = rows.reduce((a, b) => (b.d < a.d ? b : a), rows[0]);
+      return {
+        line: lineId,
+        y,
+        radius,
+        samples: rows.length,
+        withinCount: inside.length,
+        closestApproach: closest,
+        maxDistanceInside: inside.length ? Math.max(...inside.map((r) => r.d)) : null,
+        minDistanceOutside: outside.length ? Math.min(...outside.map((r) => r.d)) : null,
+        /** Contiguous x-runs that arm, in CSS px. */
+        bands: inside.reduce<[number, number][]>((acc, r) => {
+          const last = acc[acc.length - 1];
+          if (last && r.x - last[1] <= step) last[1] = r.x;
+          else acc.push([r.x, r.x]);
+          return acc;
+        }, []),
+      };
     };
 
     /**
@@ -269,11 +407,13 @@ export function DevLoop() {
       pointer,
       snapshot,
       profile,
+      latency,
       inspect,
       reducedMotion,
       state,
       blast,
       lightning,
+      lightningScan,
       lightningSweep,
       scene,
       // The camera is not part of the scene graph in R3F, so a traversal
