@@ -268,3 +268,74 @@ the visible stroke.
 Hysteresis (arm at 16, release at 22.4) and fire-on-entry are wired but are
 state-machine behaviour over time, not geometry, so they are not visible in a
 single-frame scan. They are covered by the regression pass.
+
+---
+
+## Cursor tracking error — the actual reported lag
+
+`latency()` measures event-to-first-render and reported 1 frame. That was
+correct and irrelevant. The cursor is exponentially damped, so its offset under
+motion is `e = v / a` — **proportional to pointer speed**. A one-frame pipeline
+can still draw the ring 200px from the pointer.
+
+```js
+__qa.cursorLag([400, 1200, 2400, 4000])   // px/s
+```
+
+### Before — analytic, exact for the old code
+
+`e = v / a`, `a = 1 - e^(-k·dt)`. Ring `k = 0.17·60`, `a = 0.156`. Dot
+`k = 0.42·60`, `a = 0.343`.
+
+| Pointer speed | px/frame | ring gap | dot gap |
+|---|---|---|---|
+| 400 px/s | 6.7 | 43px | 19px |
+| 1200 px/s | 20 | 128px | 58px |
+| 2400 px/s | 40 | 256px | 117px |
+| 4000 px/s | 66.7 | 427px | 194px |
+
+### After — measured
+
+| Pointer speed | px/frame | ring steady | ring worst | **dot worst** | frames to converge |
+|---|---|---|---|---|---|
+| 400 px/s | 6.7 | 19.3 | 20.1 | **0** | 18 |
+| 1200 px/s | 20 | 6.0 | 21.2 | **0** | 5 |
+| 2400 px/s | 40 | 0 | 21.1 | **0** | 1 |
+| 4000 px/s | 66.7 | 0 | 14.2 | **0** | 1 |
+
+**The dot is exact at every speed — 0px, structurally, because it is not damped
+at all.** The ring never exceeds ~21px against a 26px ceiling, versus 427px
+before at the same speed.
+
+The ring's steady gap falls to 0 above ~1560 px/s because that is where
+`a = v / maxTrail` saturates at 1 and the ring stops damping entirely. During a
+fast flick the ring rides exactly on the dot and relaxes back into its trail
+when the pointer stops. That is intended — character is not perceivable mid-flick
+— but it is the behaviour to revisit first if the cursor ever feels stiff.
+
+### Caveat on these figures
+
+The probe forces frames while the page's real `gsap.ticker` is also running, so
+`cursorStep` is stepped by both and the measured gaps are somewhat SMALLER than
+production. The bounds are structural and unaffected: the dot has no damping to
+lag with, and the ring's rate is clamped so its error cannot exceed `maxTrail`.
+Treat the ring's steady-gap column as a lower bound, not a precise figure.
+
+---
+
+## Harness defect found while measuring
+
+**`__qa.tick()` does not dispatch `gsap.ticker` callbacks.** It calls
+`gsap.updateRoot()`, which advances the global timeline — tweens and
+ScrollTriggers — but anything registered with `gsap.ticker.add()` is never
+stepped. That is every `useTicker` consumer, the Preloader counter, and the
+cursor.
+
+So the harness has never driven the DOM-side readouts, and the README's claim
+that one loop drives "every DOM readout" and can be stepped by hand is not true
+of the readouts. The first attempt to measure cursor damping through it returned
+zeros for every speed — a cursor that had simply never moved.
+
+Worked around by exporting `cursorStep(dt)` from `Cursor.tsx` and driving it
+directly. The general fix — a step registry the harness can drive, replacing
+direct `gsap.ticker.add` calls — belongs with the frame-loop unification.

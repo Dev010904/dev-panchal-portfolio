@@ -3,6 +3,7 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useRef } from 'react';
 
+import { cursorDebug, cursorStep } from '@/components/Cursor';
 import { getLenis } from '@/components/SmoothScroll';
 import { SWEEP } from '@/config/animation';
 import { gsap, ScrollTrigger } from '@/lib/gsap';
@@ -214,6 +215,74 @@ export function DevLoop() {
     };
 
     /**
+     * CURSOR TRACKING ERROR — the number that describes the reported lag.
+     *
+     * `latency()` measures event-to-first-render and reports 1 frame, which is
+     * correct and beside the point. The cursor is exponentially damped, so its
+     * steady-state offset under motion is `e = v / a` — PROPORTIONAL TO SPEED.
+     * A one-frame pipeline can still draw the ring 200px from the pointer.
+     *
+     * This drives a straight sweep at a chosen speed, one `pointermove` per
+     * FORCED frame, and records the pixel gap between the true pointer and each
+     * rendered element every frame. Then it stops the pointer and counts frames
+     * until the ring is within 1px.
+     *
+     * Forced frames, not real ones, and that is essential in this environment:
+     * an occluded window throttles rAF to a few Hz, which would silently stretch
+     * every dt and make the damping look far better than it is.
+     */
+    const cursorLag = (speedsPxPerSec = [400, 1200, 2400, 4000]) => {
+      const dt = 1 / 60;
+      const y = Math.round(window.innerHeight * 0.5);
+      const out: Record<string, unknown> = {};
+
+      for (const speed of speedsPxPerSec) {
+        const perFrame = speed * dt;
+        const steps = Math.min(90, Math.max(20, Math.floor((window.innerWidth * 0.7) / perFrame)));
+        let x = Math.round(window.innerWidth * 0.15);
+
+        // Seed: put the pointer down and let everything settle so the first
+        // measured frame is steady-state motion, not the initial catch-up.
+        window.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true, pointerType: 'mouse' }));
+        tick(dt, 30);
+        for (let w = 0; w < 30; w++) cursorStep(dt);
+
+        const ringGap: number[] = [];
+        const dotGap: number[] = [];
+        for (let i = 0; i < steps; i++) {
+          x += perFrame;
+          window.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true, pointerType: 'mouse' }));
+          tick(dt, 1);
+          cursorStep(dt);
+          ringGap.push(Math.hypot(cursorDebug.targetX - cursorDebug.ringX, cursorDebug.targetY - cursorDebug.ringY));
+          dotGap.push(Math.hypot(cursorDebug.targetX - cursorDebug.dotX, cursorDebug.targetY - cursorDebug.dotY));
+        }
+
+        // Second half only: the first frames are still converging toward the
+        // steady state and would drag the average down.
+        const tail = ringGap.slice(Math.floor(ringGap.length / 2));
+        const mean = tail.reduce((a, b) => a + b, 0) / tail.length;
+
+        let framesToConverge = 0;
+        while (framesToConverge < 120) {
+          tick(dt, 1);
+          cursorStep(dt);
+          framesToConverge++;
+          if (Math.hypot(cursorDebug.targetX - cursorDebug.ringX, cursorDebug.targetY - cursorDebug.ringY) < 1) break;
+        }
+
+        out[`${speed}px/s`] = {
+          pxPerFrame: Number(perFrame.toFixed(1)),
+          ringSteadyGapPx: Number(mean.toFixed(1)),
+          ringWorstGapPx: Number(Math.max(...ringGap).toFixed(1)),
+          dotWorstGapPx: Number(Math.max(...dotGap).toFixed(2)),
+          framesToConverge,
+        };
+      }
+      return out;
+    };
+
+    /**
      * Arming-boundary scan against a FROZEN projection.
      *
      * `lightningSweep` below dispatches a real pointer event per sample, which
@@ -412,6 +481,7 @@ export function DevLoop() {
       reducedMotion,
       state,
       blast,
+      cursorLag,
       lightning,
       lightningScan,
       lightningSweep,

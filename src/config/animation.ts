@@ -939,12 +939,44 @@ export const RAIL = {
   hidden: 0.04,
 } as const;
 
+/**
+ * THE CURSOR — a ring with a dot inside it.
+ *
+ * WHY THE OLD ONE LAGGED, IN CLOSED FORM
+ * For `x += (target - x) * a`, the steady-state error under constant velocity is
+ * `e = v / a`, where v is pointer travel per frame. That is not a subtlety, it
+ * is the defining property of exponential damping: the offset is PROPORTIONAL
+ * TO SPEED. Slow movement hides it completely and a fast flick makes it
+ * enormous.
+ *
+ *   ring, damping 0.17  ->  a = 1 - e^-0.17 = 0.156  ->  e = 6.4 * v
+ *   dot,  damping 0.42  ->  a = 1 - e^-0.42 = 0.343  ->  e = 2.9 * v
+ *
+ * At 2000 px/s — an ordinary flick across a 1080p screen — v is 33 px/frame, so
+ * the ring sat 213px behind the pointer and the dot 97px behind. That is the
+ * reported symptom exactly, and no amount of retuning a single constant fixes
+ * it: any fixed `a` large enough to keep a flick tight is large enough to throw
+ * away the weight that makes the cursor feel like an object.
+ *
+ * THE FIX, AND WHY THIS ONE OVER THE ALTERNATIVES — see Cursor.tsx.
+ */
 export const CURSOR = {
   size: 13,
   hoverScale: 2.9,
+  /** Ring damping at rest. Unchanged: this is the character, and it was never the bug. */
   damping: 0.17,
-  /** The dot at the centre tracks faster than the ring — that lag is the tell. */
-  dotDamping: 0.42,
+  /**
+   * Hard ceiling on how far the ring may trail the pointer, CSS px, at any
+   * speed. The damping rate is raised to whatever satisfies it — since
+   * `e = v / a`, holding `e <= maxTrail` means `a >= v / maxTrail`.
+   *
+   * Two ring diameters. Far enough that the trail still reads as weight during
+   * ordinary movement, close enough that the ring never separates from the dot
+   * badly enough to look like two unrelated objects.
+   */
+  maxTrail: 26,
+  /** Smoothing on the speed estimate. The k in 1 - exp(-k·dt). */
+  speedSmoothing: 22,
 } as const;
 
 /**

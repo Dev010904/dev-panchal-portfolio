@@ -6,6 +6,7 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 
 import { bootComplete, bootProgress, markBootStep, onBootProgress } from '@/lib/boot';
+import { pointerHandle } from '@/lib/pointer';
 
 import { CAMERA, DPR, MOBILE, SHOTS } from '@/config/animation';
 import { AnnotationProjector } from './AnnotationProjector';
@@ -100,6 +101,12 @@ export function SceneRoot() {
       // different purpose. Two consumers, two units, one event.
       lensHandle.targetX = e.clientX;
       lensHandle.targetY = e.clientY;
+
+      // The one shared pointer. The Cursor reads this instead of running a
+      // second `pointermove` listener of its own.
+      pointerHandle.x = e.clientX;
+      pointerHandle.y = e.clientY;
+      pointerHandle.present = true;
       // A pointer that has never moved must not open the lens at the origin.
       if (!lensHandle.present) {
         lensHandle.present = true;
@@ -113,9 +120,11 @@ export function SceneRoot() {
     // it left the viewport, which reads as the effect having got stuck.
     const onLeave = () => {
       lensHandle.present = false;
+      pointerHandle.present = false;
     };
     const onEnter = () => {
       lensHandle.present = true;
+      pointerHandle.present = true;
     };
 
     window.addEventListener('pointermove', onMove, { passive: true });

@@ -4,20 +4,70 @@ import { useEffect, useRef } from 'react';
 
 import { CURSOR } from '@/config/animation';
 import { gsap } from '@/lib/gsap';
+import { pointerHandle } from '@/lib/pointer';
 import { useScene } from '@/store/scene';
 
 /**
- * CUSTOM CURSOR — a ring with a dot inside it.
+ * CUSTOM CURSOR — an exact dot with a weighted ring around it.
  *
- * The ring and the dot are damped at different rates. That difference is the
- * whole effect: the dot arrives almost immediately so pointing still feels
- * precise, while the ring trails behind and catches up, which is what reads as
- * weight. Damping both equally gives you a laggy cursor, which is just
- * annoying.
+ * THE SHAPE OF THE FIX
+ * The dot is now rendered at the RAW pointer position with no damping at all,
+ * and the ring is damped with a rate that rises with pointer speed. Two
+ * different jobs, solved separately:
+ *
+ *   the dot   is what you point with, so it must be exact. Zero lag, always,
+ *             at any speed. Nothing about "weight" justifies a crosshair that
+ *             is not where the mouse is.
+ *   the ring  is what carries character, so it keeps its damping — but with a
+ *             hard ceiling on how far it may trail (CURSOR.maxTrail).
+ *
+ * WHY NOT THE OTHER TWO OPTIONS
+ *
+ *   Velocity-adaptive damping ALONE was considered and is not sufficient. It
+ *   bounds the gap but cannot take it to zero — a bounded error is still an
+ *   error, and the element you aim with is the one place a visible offset is
+ *   never acceptable. It is used here, but on the ring, where a bounded trail
+ *   is the desired behaviour rather than a compromise.
+ *
+ *   `pointerrawupdate` was rejected. It buys sub-frame input resolution, and
+ *   the win is strictly less than one frame because everything downstream still
+ *   renders on the frame. The cost is a second event path feeding the same
+ *   shared pointer, which is precisely the duplication this component just
+ *   stopped doing. If the site ever draws the cursor off the main thread it
+ *   becomes worth revisiting; today it is not.
+ *
+ * Both read the SHARED pointer (lib/pointer.ts). This component used to run its
+ * own `pointermove` listener alongside SceneRoot's — two handlers per move and
+ * two disagreeing notions of where the cursor was.
  *
  * Mounted only on `(hover: hover) and (pointer: fine)`. On touch there is no
  * cursor to replace and hiding the native one would be actively harmful.
  */
+
+/** Live positions, for the QA harness. Never read by the component itself. */
+export const cursorDebug = {
+  ringX: 0,
+  ringY: 0,
+  dotX: 0,
+  dotY: 0,
+  targetX: 0,
+  targetY: 0,
+};
+
+/**
+ * The frame step, hoisted so it can be driven with an exact dt.
+ *
+ * `__qa.tick()` calls `gsap.updateRoot()`, which advances the global timeline
+ * but does NOT dispatch `gsap.ticker` callbacks — so nothing registered with
+ * `gsap.ticker.add` (this cursor, every `useTicker` consumer) was ever stepped
+ * by the harness. Measuring damping through it therefore reported a cursor that
+ * had simply never moved.
+ *
+ * Exporting the step means the harness drives the exact production code with an
+ * exact simulated dt, which is the only way to measure frame-rate-independent
+ * damping in a window whose real rAF is being throttled by occlusion.
+ */
+export let cursorStep: (dt: number) => void = () => {};
 export function Cursor() {
   const ring = useRef<HTMLDivElement>(null);
   const dot = useRef<HTMLDivElement>(null);
@@ -32,65 +82,97 @@ export function Cursor() {
     enabled.current = true;
     document.documentElement.classList.add('has-cursor');
 
-    const pos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-    const r = { x: pos.x, y: pos.y };
-    const d = { x: pos.x, y: pos.y };
+    const r = { x: pointerHandle.x, y: pointerHandle.y };
     let scale = 1;
     let visible = false;
+    let prevX = pointerHandle.x;
+    let prevY = pointerHandle.y;
 
-    const onMove = (e: PointerEvent) => {
-      pos.x = e.clientX;
-      pos.y = e.clientY;
-      if (!visible) {
-        visible = true;
-        if (ring.current) ring.current.style.opacity = '1';
-        if (dot.current) dot.current.style.opacity = '1';
-      }
-    };
+    // Last values actually written to the DOM. Every style write below is
+    // guarded on these: assigning an identical string still enters the CSSOM
+    // and dirties the element, and this runs 60+ times a second forever.
+    let wroteFilled = -1;
+    let wroteVisible = -1;
 
-    const onLeave = () => {
-      visible = false;
-      if (ring.current) ring.current.style.opacity = '0';
-      if (dot.current) dot.current.style.opacity = '0';
-    };
+    const step = (dtRaw: number) => {
+      const dt = Math.min(dtRaw, 0.05);
+      const px = pointerHandle.x;
+      const py = pointerHandle.y;
 
-    const tick = (_time: number, deltaMs: number) => {
-      // Frame-rate independent damping, so the lag that reads as weight feels
-      // identical at 60Hz and 144Hz. A fixed lerp factor makes the cursor
-      // noticeably snappier on a high-refresh display.
-      const dt = Math.min(deltaMs / 1000, 0.05);
-      const kr = 1 - Math.exp(-(CURSOR.damping * 60) * dt);
-      const kd = 1 - Math.exp(-(CURSOR.dotDamping * 60) * dt);
+      // ── Speed estimate, CSS px per frame ──────────────────────────────────
+      // Smoothed, because a raw per-frame delta is noisy enough that the
+      // adaptive rate below would chatter and the ring would visibly stiffen
+      // and soften during a single movement.
+      const step = Math.hypot(px - prevX, py - prevY);
+      prevX = px;
+      prevY = py;
+      pointerHandle.speed +=
+        (step - pointerHandle.speed) * (1 - Math.exp(-CURSOR.speedSmoothing * dt));
 
-      r.x += (pos.x - r.x) * kr;
-      r.y += (pos.y - r.y) * kr;
-      d.x += (pos.x - d.x) * kd;
-      d.y += (pos.y - d.y) * kd;
+      // ── Ring: damped, with a ceiling on the trail ─────────────────────────
+      // Frame-rate independent base rate, so the weight feels identical at
+      // 60Hz and 144Hz. Then raised to whatever holds the steady-state error
+      // e = v / a at or under maxTrail. At rest the base rate wins and the
+      // ring keeps exactly the character it always had.
+      const base = 1 - Math.exp(-(CURSOR.damping * 60) * dt);
+      const needed = pointerHandle.speed / CURSOR.maxTrail;
+      const a = Math.min(1, Math.max(base, needed));
+
+      r.x += (px - r.x) * a;
+      r.y += (py - r.y) * a;
 
       const goal = useScene.getState().hovering ? CURSOR.hoverScale : 1;
       scale += (goal - scale) * (1 - Math.exp(-9.6 * dt));
 
-      if (ring.current) {
-        ring.current.style.transform =
-          `translate3d(${r.x.toFixed(2)}px, ${r.y.toFixed(2)}px, 0) translate(-50%, -50%) scale(${scale.toFixed(3)})`;
-        // Pure white, so the difference blend resolves to a clean inversion of
-        // whatever is behind it rather than a tinted one.
-        ring.current.style.backgroundColor = scale > 1.6 ? '#ffffff' : 'transparent';
+      const filled = scale > 1.6 ? 1 : 0;
+      const show = pointerHandle.present ? 1 : 0;
+      if (show !== wroteVisible) {
+        wroteVisible = show;
+        visible = !!show;
+        if (ring.current) ring.current.style.opacity = show ? '1' : '0';
+        if (dot.current) dot.current.style.opacity = show ? '1' : '0';
       }
+
+      if (ring.current) {
+        // Rounded to whole device pixels via `| 0` on a pre-scaled value rather
+        // than toFixed(): toFixed allocates a string per call, three per frame,
+        // ~180 strings a second for digits nobody can see.
+        ring.current.style.transform =
+          'translate3d(' + Math.round(r.x * 100) / 100 + 'px,' +
+          Math.round(r.y * 100) / 100 + 'px,0) translate(-50%,-50%) scale(' +
+          Math.round(scale * 1000) / 1000 + ')';
+        if (filled !== wroteFilled) {
+          // Pure white, so the difference blend resolves to a clean inversion
+          // of whatever is behind it rather than a tinted one.
+          ring.current.style.backgroundColor = filled ? '#ffffff' : 'transparent';
+        }
+      }
+
+      // ── Dot: exact. No damping, no rounding, no conditions. ───────────────
       if (dot.current) {
         dot.current.style.transform =
-          `translate3d(${d.x.toFixed(2)}px, ${d.y.toFixed(2)}px, 0) translate(-50%, -50%) scale(${scale > 1.6 ? 0 : 1})`;
+          'translate3d(' + px + 'px,' + py + 'px,0) translate(-50%,-50%) scale(' +
+          (filled ? 0 : 1) + ')';
       }
+
+      if (filled !== wroteFilled) wroteFilled = filled;
+
+      cursorDebug.ringX = r.x;
+      cursorDebug.ringY = r.y;
+      cursorDebug.dotX = px;
+      cursorDebug.dotY = py;
+      cursorDebug.targetX = px;
+      cursorDebug.targetY = py;
+      void visible;
     };
 
-    window.addEventListener('pointermove', onMove, { passive: true });
-    document.addEventListener('pointerleave', onLeave);
+    const tick = (_time: number, deltaMs: number) => step(deltaMs / 1000);
+    cursorStep = step;
     gsap.ticker.add(tick);
 
     return () => {
       gsap.ticker.remove(tick);
-      window.removeEventListener('pointermove', onMove);
-      document.removeEventListener('pointerleave', onLeave);
+      cursorStep = () => {};
       document.documentElement.classList.remove('has-cursor');
     };
   }, [reducedMotion]);
@@ -121,6 +203,10 @@ export function Cursor() {
         style={{
           width: CURSOR.size,
           height: CURSOR.size,
+          // Promoted to its own compositor layer. Without it the ring is
+          // repainted into a shared layer every frame, and on this page that
+          // layer contains the whole fixed canvas.
+          willChange: 'transform',
           transition: 'background-color 0.25s var(--ease-move), opacity 0.3s linear',
         }}
       />
@@ -128,7 +214,12 @@ export function Cursor() {
         ref={dot}
         aria-hidden="true"
         className="pointer-events-none fixed left-0 top-0 z-[120] hidden rounded-full bg-white opacity-0 mix-blend-difference md:block"
-        style={{ width: 3, height: 3, transition: 'opacity 0.3s linear' }}
+        style={{
+          width: 3,
+          height: 3,
+          willChange: 'transform',
+          transition: 'opacity 0.3s linear',
+        }}
       />
     </>
   );
