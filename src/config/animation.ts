@@ -916,6 +916,97 @@ export const CURSOR = {
   dotDamping: 0.42,
 } as const;
 
+/**
+ * THE INSPECTION LENS — the cursor uncovers the mark's internal structure.
+ *
+ * A soft circular region follows the pointer. Inside it the mark stops being a
+ * finished machined object and becomes the drawing it was made from:
+ * construction lines on the design grid, the bolt-hole axes, and the hidden
+ * edges the solid is covering up.
+ *
+ * WHY THIS IS A SHADER BRANCH AND NOT A MASK
+ * The obvious build is a DOM mask over a second copy of the object, and it is
+ * wrong twice over. A mask can only reveal a second *element*, so the two views
+ * have to be two draws of the same geometry, which doubles the object's cost and
+ * guarantees they will drift out of alignment the moment anything animates. And
+ * a mask is a compositing operation, so its edge is a hard alpha cut at exactly
+ * one screen resolution. Branching inside the one material that is already
+ * drawing the object means both views share every transform for free, and the
+ * boundary can be an optical falloff rather than a cut.
+ *
+ * This was settled by the research pass: hubtown.co.in ships this effect and a
+ * sweep of every element's computed style for `mask-image` and circular
+ * `clip-path` on that page returns nothing. See docs/research-2026.md.
+ *
+ * `radius` is in fractions of viewport HEIGHT, not width, so the lens is the
+ * same physical size on any aspect ratio. Anything expressed against width
+ * grows into a searchlight on a 21:9 monitor.
+ */
+export const LENS = {
+  /** Lens radius as a fraction of viewport height. */
+  radius: 0.155,
+  /**
+   * Width of the soft boundary, as a fraction of the radius. This number is
+   * doing most of the work: at 0 it is a mask, and the effect dies. The band
+   * has to be wide enough that there is no frame in which a hard circle is
+   * visible anywhere on the object.
+   */
+  edge: 0.42,
+  /**
+   * Radial warp at the rim, in fractions of the radius. The construction
+   * pattern is pushed outward as it approaches the boundary, which is what a
+   * real lens does to what is behind it. Small — past ~0.1 it stops reading as
+   * glass and starts reading as a heat haze.
+   */
+  refract: 0.055,
+  /** How fast the lens chases the pointer. The k in 1 - exp(-k·dt). */
+  followRate: 11,
+  /** How fast the lens opens and closes when it arms or disarms. */
+  fadeRate: 6.5,
+  /**
+   * Construction-line spacing in DESIGN-GRID units, not world units — the same
+   * 100×120 grid `lib/mark/paths.ts` authors in. That is the point: the lines
+   * the lens reveals are the grid the mark was actually drawn on, so they land
+   * on the real feature edges instead of being decorative hatching.
+   */
+  gridStep: 10,
+  /** Hairline width in grid units. */
+  lineWidth: 0.22,
+  /** Bolt-hole axis ring radius, grid units. */
+  boltRing: 4.2,
+  /**
+   * Brightness of each layer inside the lens. The solid is not removed — it is
+   * dimmed and drawn over, so the object keeps its mass and the lens reads as
+   * seeing INTO it rather than through a hole in it.
+   */
+  values: { solid: 0.34, grid: 0.30, bolt: 0.62, edge: 0.85, rim: 0.5 },
+  /**
+   * The shots where the lens is live.
+   *
+   * It is armed where the mark is the SUBJECT and nowhere else. On About the
+   * object is deliberately pushed back to 58% presence as atmosphere behind the
+   * copy, and a cursor that lights up background furniture teaches the visitor
+   * that the effect is decoration. On Contact the camera has craned off the mark
+   * entirely. Restricting it to hero and the Deconstruction is what keeps it
+   * reading as an instrument you pick up rather than a filter that is always on.
+   */
+  shots: ['hero', 'resolve', 'exploded', 'dissolved', 'release'] as const,
+} as const;
+
+/**
+ * TELEMETRY HUD — the permanent bottom-corner readout.
+ *
+ * Furniture, not a feature. Every value is read off the renderer; nothing here
+ * is ever estimated, which is the entire reason it is allowed to exist on a
+ * page that claims to be about how things are built.
+ */
+export const HUD = {
+  /** Readout refresh, seconds. Faster than this and the digits are unreadable. */
+  interval: 0.25,
+  /** Frame-time smoothing. The k in 1 - exp(-k·dt). */
+  smoothing: 3.5,
+} as const;
+
 /** Post-processing. Restrained: this is a studio photo, not a music video. */
 export const POST = {
   bloom: { intensity: 0.42, threshold: 0.72, smoothing: 0.3, mipmapBlur: true },

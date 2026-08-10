@@ -8,6 +8,7 @@ import {
   BLAST,
   DECONSTRUCTION,
   HERO,
+  LENS,
   MARK_AMBIENT,
   shotPresence,
   type ShotName,
@@ -16,11 +17,13 @@ import { blastHandle } from '@/scenes/handles';
 import { GLSL3, glsl } from '@/lib/glsl';
 import { buildMark, buildPins, sampleMarkSurface } from '@/lib/mark/geometry';
 import { MARK_SCALE, PINS } from '@/lib/mark/paths';
+import { lensHandle, updateLens } from '@/scenes/lens';
 import {
   cloneMarkMaterial,
   createEdgeMaterial,
   createGhostMaterial,
   createMaterials,
+  createXrayEdgeMaterial,
 } from '@/scenes/materials';
 import dissolveFrag from '@/shaders/dissolve.frag';
 import dissolveVert from '@/shaders/dissolve.vert';
@@ -71,6 +74,7 @@ export function MarkObject({
   const inner = useRef<THREE.Group>(null!);
   const partRefs = useRef<THREE.Mesh[]>([]);
   const edgeRefs = useRef<THREE.LineSegments[]>([]);
+  const xrayRefs = useRef<THREE.LineSegments[]>([]);
   const ghostRefs = useRef<THREE.Mesh[]>([]);
   const pinsRef = useRef<THREE.InstancedMesh>(null!);
   const pointsRef = useRef<THREE.Points>(null!);
@@ -93,6 +97,12 @@ export function MarkObject({
 
   const edgeMats = useMemo(() => parts.map(() => createEdgeMaterial()), [parts]);
   const ghostMats = useMemo(() => parts.map(() => createGhostMaterial()), [parts]);
+  /**
+   * One shared X-ray edge material for all six parts, unlike the wireframe
+   * edges above which need per-part opacity for the Deconstruction's stagger.
+   * The lens has no stagger — it is one region of screen, so one material.
+   */
+  const xrayMat = useMemo(() => createXrayEdgeMaterial(), []);
 
   const edgeGeos = useMemo(
     () => parts.map((p) => new THREE.EdgesGeometry(p.geometry, 26)),
@@ -189,10 +199,10 @@ export function MarkObject({
       edgeGeos.forEach((g) => g.dispose());
       pointsGeo.dispose();
       pointsMat.dispose();
-      [...solidMats, ...edgeMats, ...ghostMats, pinMat].forEach((m) => m.dispose());
+      [...solidMats, ...edgeMats, ...ghostMats, pinMat, xrayMat].forEach((m) => m.dispose());
       Object.values(materials).forEach((m) => m.dispose());
     };
-  }, [edgeGeos, pointsGeo, pointsMat, solidMats, edgeMats, ghostMats, pinMat, materials]);
+  }, [edgeGeos, pointsGeo, pointsMat, solidMats, edgeMats, ghostMats, pinMat, xrayMat, materials]);
 
   const tmp = useMemo(() => new THREE.Vector3(), []);
   const K = DECONSTRUCTION.keys;
@@ -233,12 +243,30 @@ export function MarkObject({
     [parts],
   );
 
+  /** Scratch for the drawing-buffer size, so the frame loop allocates nothing. */
+  const bufferSize = useMemo(() => new THREE.Vector2(), []);
+
   useFrame((state, delta) => {
     const s = sceneState();
 
     const t = state.clock.elapsedTime;
     const p = handles.current.progress.value;
     const frozen = s.reducedMotion;
+
+    // ── The inspection lens ─────────────────────────────────────────────────
+    // Armed only where the mark is the subject, and never on touch or under
+    // reduced motion. `present` is false whenever the pointer has left the
+    // window, so the lens closes when the cursor leaves rather than freezing
+    // wherever it happened to be when it went.
+    lensHandle.armed =
+      lensHandle.present &&
+      !s.isMobile &&
+      !frozen &&
+      !s.menuOpen &&
+      (LENS.shots as readonly string[]).includes(s.shot);
+
+    state.gl.getDrawingBufferSize(bufferSize);
+    updateLens(Math.min(delta, 0.05), bufferSize, state.gl.getPixelRatio());
 
     // ── Autonomous motion ───────────────────────────────────────────────────
     // Sway plus a sine breath, both absolute functions of time rather than
@@ -407,6 +435,16 @@ export function MarkObject({
         ghost.visible = edgeOpacity > 0.01;
       }
 
+      // X-ray edges ride the same transform as the solid they belong to.
+      // Culled entirely when the lens is shut, so the closed state costs six
+      // fewer draw calls rather than six transparent ones.
+      const xray = xrayRefs.current[i];
+      if (xray) {
+        xray.position.copy(tmp);
+        xray.rotation.z = mesh.rotation.z;
+        xray.visible = lensHandle.amount > 0.01 && solidOpacity > 0.01;
+      }
+
       // Publish world anchors for the DOM leader lines.
       const anchor = handles.current.anchors[i];
       if (anchor) {
@@ -460,6 +498,23 @@ export function MarkObject({
               }}
               geometry={edgeGeos[i]}
               material={edgeMats[i]}
+              visible={false}
+            />
+            {/* The X-ray overlay. Same geometry as the wireframe edges — the
+                EdgesGeometry is built once and drawn twice — but with depth
+                testing off and gated to the lens, so these are the edges the
+                solid is hiding rather than the ones it is showing.
+
+                renderOrder is forced late: a depth-test-free additive line
+                drawn before the solid would be painted over by it, and the
+                whole overlay would be invisible for no obvious reason. */}
+            <lineSegments
+              ref={(el) => {
+                if (el) xrayRefs.current[i] = el;
+              }}
+              geometry={edgeGeos[i]}
+              material={xrayMat}
+              renderOrder={10}
               visible={false}
             />
           </group>

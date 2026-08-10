@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 
+import { lensUniforms, withLens } from '@/scenes/lens';
+
 /**
  * MATERIALS — near-black machined aluminium.
  *
@@ -134,6 +136,17 @@ export function createMaterials() {
     envMapIntensity: 0.3,
   });
 
+  /**
+   * The lens goes on the three materials the MARK is made of, and deliberately
+   * not on `archive`. The archive is a different object in a different region
+   * of the room, it has no design grid and no bolt stations, and giving it the
+   * inspection view would turn a considered reveal into a screen-wide gimmick
+   * that follows the cursor everywhere. One object answers to the lens.
+   */
+  withLens(graphite, 'graphite');
+  withLens(steel, 'steel');
+  withLens(ember, 'ember');
+
   return { graphite, steel, ember, archive } satisfies Record<MaterialKey, THREE.Material>;
 }
 
@@ -233,6 +246,63 @@ export function cloneMarkMaterial(source: THREE.Material): THREE.Material {
   clone.onBeforeCompile = source.onBeforeCompile;
   clone.customProgramCacheKey = source.customProgramCacheKey;
   return clone;
+}
+
+/**
+ * THE LENS'S HIDDEN EDGES.
+ *
+ * The one thing the solid shader genuinely cannot do. A fragment shader only
+ * ever runs on the surface that won the depth test, so a grazing-angle term
+ * inside the lens finds the chamfers of whatever part is in FRONT and can never
+ * find the edges of the part behind it — and "the edges you cannot normally
+ * see" is the whole premise of an X-ray view.
+ *
+ * `depthTest: false` is the answer, and it costs nothing extra because the
+ * EdgesGeometry these draw is already built for the wireframe state. The edges
+ * of every part draw through every other part, which is what a section view
+ * actually looks like. They are then gated to the lens in screen space, so
+ * outside it they contribute exactly zero.
+ *
+ * `depthWrite` stays off for the obvious reason: a line that wrote depth while
+ * ignoring it would occlude the solid it is supposed to be drawn over.
+ */
+export function createXrayEdgeMaterial() {
+  const mat = new THREE.LineBasicMaterial({
+    color: new THREE.Color('#7fa8d4'),
+    transparent: true,
+    opacity: 1,
+    depthTest: false,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    toneMapped: false,
+  });
+
+  mat.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, lensUniforms);
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+         uniform vec2  uLensPos;
+         uniform float uLensRadius;
+         uniform float uLensEdge;
+         uniform float uLensAmount;`,
+      )
+      .replace(
+        '#include <opaque_fragment>',
+        `
+         float lr = length(gl_FragCoord.xy - uLensPos) / max(uLensRadius, 1.0);
+         // Squared falloff rather than the solid's smoothstep: hidden edges are
+         // additive, so a linear edge fade leaves a visible disc of haze at the
+         // boundary where the solid has already faded out.
+         float lm = 1.0 - smoothstep(1.0 - max(uLensEdge, 0.001), 1.0, lr);
+         diffuseColor.a *= lm * lm * uLensAmount;
+         #include <opaque_fragment>`,
+      );
+  };
+
+  mat.customProgramCacheKey = () => 'xray-edge';
+  return mat;
 }
 
 /** Wireframe state — edges only, plus a fresnel ghost of the solid behind them. */

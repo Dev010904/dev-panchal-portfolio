@@ -21,6 +21,7 @@ import { SweepLines } from './SweepLines';
 import { WipeOverlay } from './WipeOverlay';
 import { WorkScene } from './WorkScene';
 import { markHandles } from './handles';
+import { lensHandle } from './lens';
 import { useScene } from '@/store/scene';
 
 /**
@@ -91,9 +92,40 @@ export function SceneRoot() {
       useScene
         .getState()
         .setPointer(x, y, e.clientX / window.innerWidth, 1 - e.clientY / window.innerHeight);
+
+      // The lens wants raw CSS pixels, not the normalised pair above. It is
+      // resolved against the drawing buffer in the shader, so normalising here
+      // and un-normalising there would lose precision for nothing — and a
+      // pointer-driven parallax is already using the normalised pair for a
+      // different purpose. Two consumers, two units, one event.
+      lensHandle.targetX = e.clientX;
+      lensHandle.targetY = e.clientY;
+      // A pointer that has never moved must not open the lens at the origin.
+      if (!lensHandle.present) {
+        lensHandle.present = true;
+        lensHandle.x = e.clientX;
+        lensHandle.y = e.clientY;
+      }
     };
+
+    // `pointerleave` on the document fires when the cursor exits the window
+    // entirely. Without it the lens stays parked wherever the pointer was when
+    // it left the viewport, which reads as the effect having got stuck.
+    const onLeave = () => {
+      lensHandle.present = false;
+    };
+    const onEnter = () => {
+      lensHandle.present = true;
+    };
+
     window.addEventListener('pointermove', onMove, { passive: true });
-    return () => window.removeEventListener('pointermove', onMove);
+    document.addEventListener('pointerleave', onLeave);
+    document.addEventListener('pointerenter', onEnter);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerleave', onLeave);
+      document.removeEventListener('pointerenter', onEnter);
+    };
   }, [mobile]);
 
   const quality = mobile ? 'low' : 'high';
