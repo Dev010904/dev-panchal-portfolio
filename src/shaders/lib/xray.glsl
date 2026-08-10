@@ -31,33 +31,60 @@ uniform vec3  uLensAccent;   // ember — reserved for the bolt stations only
 
 varying vec3 vMarkLocal;
 
-/**
- * Antialiased repeating line.
- *
- * `fwidth` is what makes a hairline survive at any DPR and any zoom: it asks
- * how much this coordinate changes across one pixel and sizes the smoothstep to
- * exactly that, so the line is one pixel wide whether the object fills the
- * screen or sits 40px across. A fixed epsilon instead produces lines that
- * shimmer when the object moves, which is the single most common tell of a
- * hand-rolled grid shader.
- */
-float lensLine(float x, float step, float w) {
+// ── ANTIALIASING WIDTHS ARE PASSED IN, NEVER TAKEN HERE ──────────────────────
+//
+// These helpers used to call `fwidth` themselves. That put gradient
+// instructions inside a loop that sits inside divergent control flow — the
+// early-out in `applyLens` — and produced, on every compiled program that
+// includes this chunk:
+//
+//   X3595: gradient instruction used in a loop with varying iteration;
+//          partial derivatives may have undefined value
+//
+// It is a correctness warning, not a style one. A derivative is computed by
+// differencing neighbouring fragments across a 2x2 quad, so it is only defined
+// when all four lanes execute it. Once some lanes have taken an early return or
+// a different loop count, the neighbours a lane differences against may never
+// have run — the result is undefined and free to differ between GPUs.
+//
+// The fix is structural: every derivative is now taken exactly once in
+// `applyLens`, in uniform control flow before any branch, and handed down.
+//
+// `fwidth` is still what makes a hairline survive at any DPR and any zoom — it
+// asks how much a coordinate changes across one pixel and sizes the smoothstep
+// to exactly that, so the line is one pixel wide whether the object fills the
+// screen or sits 40px across. A fixed epsilon instead produces lines that
+// shimmer when the object moves, which is the most common tell of a hand-rolled
+// grid shader. None of that changes; only where the derivative is taken.
+
+/** Antialiased repeating line. `aa` is the screen-space width of one pixel in x. */
+float lensLine(float x, float step, float w, float aa) {
   float d = abs(mod(x + step * 0.5, step) - step * 0.5);
-  float aa = fwidth(x) * 0.8 + 1e-5;
   return 1.0 - smoothstep(w - aa, w + aa, d);
 }
 
-float lensRing(vec2 p, vec2 c, float r, float w) {
-  float dist = length(p - c);
+/**
+ * Antialiased ring.
+ *
+ * `fw` is the screen-space derivative of `p`. The derivative of `length(p - c)`
+ * is recovered from it by the chain rule rather than by a second gradient
+ * instruction: d(dist) = |d(p) . dir|, where `dir` is the unit vector from the
+ * centre. Summing the two axis contributions with `dot(abs(dir), fw)` is the
+ * same first-order estimate `fwidth(dist)` would have produced, and it is legal
+ * inside a loop because it contains no gradient at all.
+ */
+float lensRing(vec2 p, vec2 c, float r, float w, vec2 fw) {
+  vec2 delta = p - c;
+  float dist = length(delta);
   float d = abs(dist - r);
-  float aa = fwidth(dist) * 0.8 + 1e-5;
+  vec2 dir = delta / max(dist, 1e-5);
+  float aa = dot(abs(dir), fw) * 0.8 + 1e-5;
   return 1.0 - smoothstep(w - aa, w + aa, d);
 }
 
 /** Centre-mark: the short cross a drawing puts through a drilled hole. */
-float lensCross(vec2 p, vec2 c, float len, float w) {
+float lensCross(vec2 p, vec2 c, float len, float w, float aa) {
   vec2 d = abs(p - c);
-  float aa = fwidth(p.x) * 0.8 + 1e-5;
   float h = (1.0 - smoothstep(w - aa, w + aa, d.y)) * (1.0 - smoothstep(len, len + aa, d.x));
   float v = (1.0 - smoothstep(w - aa, w + aa, d.x)) * (1.0 - smoothstep(len, len + aa, d.y));
   return max(h, v);
@@ -91,23 +118,34 @@ float lensMask(vec2 frag, out float rim) {
 vec3 applyLens(vec3 lit, vec2 frag, float fresnel) {
   float rim;
   float mask = lensMask(frag, rim) * uLensAmount;
-  if (mask < 0.002) return lit;
 
   // Object space -> design grid. The radial stretch at the rim is the
   // refraction: what is behind glass is displaced outward near its edge.
   vec2 g = vMarkLocal.xy * uMarkGrid.x + uMarkGrid.yz;
   g *= 1.0 + uLensRefract * rim * 3.0;
 
+  // ── THE ONLY GRADIENT INSTRUCTION IN THIS CHUNK ────────────────────────────
+  // Taken here, above the early-out and outside the loop below, so all four
+  // lanes of every quad reach it. Everything downstream derives its
+  // antialiasing width from this one value by arithmetic. Moving this line
+  // below the branch, or letting a helper take its own `fwidth` again,
+  // reintroduces X3595 and with it undefined behaviour that can render
+  // differently across GPUs. See the note above the helpers.
+  vec2 fw = fwidth(g);
+
+  // Safe to leave now: no derivative is taken after this point.
+  if (mask < 0.002) return lit;
+
   // Construction grid — the lines the part was actually drawn against.
-  float grid = max(lensLine(g.x, uLensStep, uLensLineW),
-                   lensLine(g.y, uLensStep, uLensLineW));
+  float grid = max(lensLine(g.x, uLensStep, uLensLineW, fw.x * 0.8 + 1e-5),
+                   lensLine(g.y, uLensStep, uLensLineW, fw.y * 0.8 + 1e-5));
 
   // Bolt-hole axes. Ring plus centre-mark at each of the three stations.
   float bolt = 0.0;
   for (int i = 0; i < 3; i++) {
     vec2 c = vec2(uBoltX, uBoltY[i]);
-    bolt = max(bolt, lensRing(g, c, uBoltRing, uLensLineW * 1.1));
-    bolt = max(bolt, lensCross(g, c, uBoltRing * 1.9, uLensLineW * 1.1));
+    bolt = max(bolt, lensRing(g, c, uBoltRing, uLensLineW * 1.1, fw));
+    bolt = max(bolt, lensCross(g, c, uBoltRing * 1.9, uLensLineW * 1.1, fw.x * 0.8 + 1e-5));
   }
 
   // Hidden edges. A grazing-angle term finds every chamfer boundary and every
