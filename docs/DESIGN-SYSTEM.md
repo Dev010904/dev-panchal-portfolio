@@ -129,6 +129,45 @@ the config is a rig pose rather than a world coordinate.
 
 ---
 
+## The preloader is a CAD viewport
+
+A technical drawing that assembles itself, then solidifies into the real mark.
+
+**It is SVG and GSAP, not shader work.** A preloader exists to cover shader
+compilation, so a preloader that needs the GPU is competing with the thing it
+is covering. 46 SVG elements and one scrubbed timeline cost nothing on a CPU
+that is otherwise idle. The research pass found Oryzo's preloader is 43 SVG
+elements over the canvas for the same reason — see `research-2026-b.md`.
+
+**The element budget is ~46, capped at 50.** `__qa.cad()` reports the live
+count. If the drawing needs more elements to read, simplify the drawing; do not
+raise the cap.
+
+**Every outline comes from `PARTS`.** The same array `lib/mark/geometry.ts`
+extrudes into the 3D object. Nothing is traced or re-authored, so the drawing
+and the object it becomes cannot drift.
+
+**The wordmark is a datum, not a caption.** "DEV PANCHAL" is static hairline
+type from the first frame — it never scrambles, resolves or moves. Its baseline
+and cap height are drawn as datums A and B; the grid registers on its left and
+right edges; one leader points at it. Its set width is forced with `textLength`
+so the dimension measuring it is correct by construction rather than dependent
+on a font that may not have loaded.
+
+**One resolution event.** The previous version resolved the wordmark out of
+glyph noise *while* the counter climbed and the panels split — three competing
+resolutions, so the eye has nowhere to go and the moment that should land does
+not. There is now exactly one: outlines take their fill, construction furniture
+strips away, the sheet pushes toward the camera, panels split off it.
+
+**The drawing is scrubbed by real progress.** One paused timeline; the frame
+loop sets its playhead from the damped `useProgress` value. The drawing is
+exactly as far along as the site is loaded — on a fast connection you see the
+last third, on a slow one you watch it get drawn. Nothing about the timing is
+invented.
+
+---
+
 ## Bans
 
 No cartoon or low-poly-cute anything. No mascots. No emoji. No purple-to-blue

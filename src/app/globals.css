@@ -146,6 +146,66 @@ html.lenis body {
   margin-bottom: -0.18em;
 }
 
+/**
+ * THE CAD VIEWPORT — preloader only.
+ *
+ * WHY NOT `vector-effect: non-scaling-stroke`, WHICH IS THE OBVIOUS CHOICE.
+ *
+ * It is the right answer for hairlines and the wrong answer here, because it
+ * resolves the stroke — INCLUDING THE DASH PATTERN — in screen space. That
+ * breaks both reveal mechanisms this drawing needs: `pathLength="1"`
+ * normalisation stops working entirely (computed style comes back as
+ * `stroke-dasharray: 1px`, a 1px-on/1px-off pattern that reads as a solid
+ * line), and a dasharray computed from `getTotalLength()` in user units gets
+ * applied as pixels against a path whose screen length is 3x that. Found by
+ * looking at the page, not by reading the spec.
+ *
+ * So the strokes are in user units and the scale is compensated by hand.
+ * `--cad-scale` is set on any group that carries a transform scale, and the
+ * width divides through it, so a hairline inside the 2.35x mark assembly is
+ * the same optical weight as one on the sheet. `--cad-hair` is bumped on small
+ * viewports, where the sheet is scaled down far enough that 0.72 user units
+ * would land under half a device pixel and drop out.
+ */
+.cad-sheet {
+  --cad-hair: 0.72;
+  --cad-scale: 1;
+}
+
+@media (max-width: 820px) {
+  .cad-sheet {
+    --cad-hair: 1.9;
+  }
+}
+
+.cad-line {
+  stroke-width: calc(var(--cad-hair) / var(--cad-scale));
+}
+
+.cad-word {
+  font-family: var(--font-display);
+  font-weight: 700;
+  fill: none;
+  stroke: var(--color-fg);
+  stroke-width: calc(var(--cad-hair) * 1.15);
+}
+
+/**
+ * Labels start hidden. The assembly timeline fades each one in at its phase,
+ * but a paused GSAP timeline has not applied any "from" state until something
+ * scrubs it — and on an occluded tab nothing ever does. Without this the
+ * drawing renders at progress 0 with every annotation already present, which
+ * is precisely the failure the reveal work exists to prevent.
+ */
+.cad-t {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  fill: var(--color-fg-dim);
+  stroke: none;
+  opacity: 0;
+}
+
 .t-lead {
   font-family: var(--font-display);
   font-weight: 400;

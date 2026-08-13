@@ -4,6 +4,7 @@ import { useFrame, useStore, useThree } from '@react-three/fiber';
 import { useEffect, useRef } from 'react';
 
 import { cursorDebug } from '@/components/Cursor';
+import { preloaderDebug } from '@/components/Preloader';
 import { getLenis } from '@/components/SmoothScroll';
 import { SWEEP } from '@/config/animation';
 import { gsap, ScrollTrigger } from '@/lib/gsap';
@@ -630,6 +631,38 @@ export function DevLoop() {
       };
     };
 
+    /**
+     * Park the preloader's CAD assembly at a known progress and hold it there.
+     *
+     * The whole preload is over in a few hundred milliseconds on localhost, so
+     * every intermediate state of a progress-scrubbed drawing is otherwise
+     * unobservable. `cad(0.5)` freezes it at half-drawn; `cad()` reads the
+     * current state; `cad(null)` hands it back to real progress.
+     *
+     * Also reports the drawn element count, because the budget for this
+     * drawing is ~45 and a cap nobody can check is not a cap.
+     */
+    const cad = (p?: number | null) => {
+      const tl = preloaderDebug.draw;
+      if (!tl) return 'preloader is not mounted — reload to see it';
+      if (p === null) {
+        preloaderDebug.freeze = false;
+      } else if (typeof p === 'number') {
+        preloaderDebug.freeze = true;
+        tl.progress(Math.min(Math.max(p, 0), 1));
+      }
+      const root = document.querySelector('[data-cad-root]');
+      return {
+        progress: Number(tl.progress().toFixed(3)),
+        frozen: preloaderDebug.freeze,
+        // Drawn elements only: the <svg> itself and layout <g> are not marks
+        // on the sheet, and counting them would flatter the budget.
+        elements: root
+          ? root.querySelectorAll('path, line, circle, rect, text, polyline').length
+          : 0,
+      };
+    };
+
     /** Move the virtual pointer without a real mouse. */
     const pointer = (x: number, y: number) => {
       window.dispatchEvent(
@@ -708,6 +741,7 @@ export function DevLoop() {
       state,
       blast,
       perf,
+      cad,
       cursorLag,
       loopOrder,
       loopOrderSelfTest,

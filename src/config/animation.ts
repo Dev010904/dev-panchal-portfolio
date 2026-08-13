@@ -40,8 +40,67 @@ export const PRELOADER = {
    * Converted from the old fixed alpha of 0.075: -ln(1 - 0.075) × 60.
    */
   counterRate: 4.7,
-  /** Glyph-scramble resolve of "DEV PANCHAL". */
-  scramble: { perLetter: 0.055, cycles: 9, tickRate: 0.045 },
+  /**
+   * THE CAD VIEWPORT.
+   *
+   * The preloader is a technical drawing that assembles itself, built from the
+   * SAME `PARTS` outlines as the 3D mark — so the thing being drawn is the
+   * thing that is loading, and the two can never drift apart.
+   *
+   * WHY SVG AND NOT A SHADER. This runs while the GPU is compiling every
+   * program the site owns. Anything that needs the GPU is competing with the
+   * work the preloader exists to cover. 44 SVG elements and one scrubbed GSAP
+   * timeline cost effectively nothing and are done on the CPU, which is idle.
+   * The research pass found Oryzo's preloader is 43 SVG elements over the
+   * canvas for exactly this reason — see docs/research-2026-b.md.
+   *
+   * THE WORDMARK IS THE DATUM. "DEV PANCHAL" is static hairline type from the
+   * first frame; it never scrambles, never resolves, never moves. The drawing
+   * registers against it — dimension lines measure to its baseline and cap
+   * height, the coordinate grid lands on its set width, and one leader points
+   * at it. There is exactly ONE resolution event on this screen: the drawing
+   * solidifying into the real mark. A second one competing with it is what
+   * made the old glyph-scramble version read as two unrelated loaders stacked.
+   *
+   * `phases` are fractions of REAL progress, not seconds. Nothing here is on a
+   * timer; the drawing is exactly as far along as the site is loaded.
+   */
+  cad: {
+    /** Set width of the wordmark in viewBox units. Forced via `textLength`, so
+     *  the dimension line that measures it is correct by construction rather
+     *  than by measuring a font that may not have loaded yet. */
+    wordWidth: 700,
+    /** Cap height as a fraction of font size, for Inter Tight. The cap-height
+     *  datum is drawn here, so this is a real typographic value, not a guess. */
+    capRatio: 0.727,
+    /**
+     * Where each layer of the drawing lands, as a fraction of real progress.
+     * Ordered the way a draughtsman works: grid, datums, outline, then the
+     * things that annotate what is already there.
+     */
+    phases: {
+      grid: { at: 0.0, dur: 0.26, stagger: 0.03 },
+      datum: { at: 0.14, dur: 0.2 },
+      outline: { at: 0.26, dur: 0.4, stagger: 0.05 },
+      circles: { at: 0.42, dur: 0.3, stagger: 0.04 },
+      points: { at: 0.55, dur: 0.24, stagger: 0.035 },
+      dims: { at: 0.6, dur: 0.24, stagger: 0.03 },
+      leader: { at: 0.8, dur: 0.2 },
+    },
+    /**
+     * THE RESOLUTION. Runs once, on real `ready`, and is the only thing on
+     * this screen that is time-based rather than progress-based — by then
+     * there is nothing left to load, so there is no honest progress to drive it.
+     */
+    resolve: {
+      /** Construction furniture leaves first, so the outline is alone. */
+      strip: { duration: 0.42, ease: EASE.move },
+      /** Outlines take their fill: the drawing becoming an object. */
+      solidify: { duration: 0.5, ease: EASE.enter },
+      /** Then the whole drawing pushes toward the camera and hands off. */
+      handoff: { duration: 0.7, scale: 1.28, ease: 'power2.in' },
+    },
+  },
   /** The black panel split. */
   exit: { duration: 1.15, stagger: 0.09, ease: EASE.reveal },
 } as const;

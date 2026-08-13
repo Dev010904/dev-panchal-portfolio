@@ -589,7 +589,7 @@ will cost time if believed. Verify against a freshly loaded document.
 
 ---
 
-## §3 verified and landed — 2026-08-13
+## The smoothness pass, verified and landed — 2026-08-13
 
 The smoothness work had been written, typechecked and left uncommitted because
 the browser dropped before it could be verified. Verified in Edge
@@ -709,3 +709,87 @@ console messages, all of them the React DevTools INFO line — so the reader was
 live on this exact load. Both preconditions re-confirmed before believing the
 absence: `ANGLE (Intel, Intel(R) Iris(R) Xe Graphics, Direct3D11 vs_5_0 ps_5_0,
 D3D11)` and `gl.debug.checkShaderErrors = true`.
+
+---
+
+## The SVG draw-on trap, found by looking at the page — 2026-08-13
+
+Recorded because it cost a rebuild of the preloader's whole reveal layer, and
+because the broken version *typechecked, rendered, and looked plausible*.
+
+The obvious way to draw an SVG on is `pathLength="1"` plus an animated
+`stroke-dashoffset`: it normalises every shape's length to 1, so one dasharray
+works for every element and nothing has to be measured. It is the standard
+trick and it is what was written first.
+
+**It rendered every element fully drawn at progress 0.** Two independent
+causes, either one sufficient:
+
+1. **`vector-effect: non-scaling-stroke` resolves the dash pattern in SCREEN
+   space**, which defeats `pathLength` normalisation entirely. `getComputedStyle`
+   returns `stroke-dasharray: 1px` — a 1px-on, 1px-off pattern on a 540-unit
+   line, which at hairline width is indistinguishable from a solid stroke. The
+   same breakage applies to a dasharray computed from `getTotalLength()`: the
+   user-unit length gets applied as pixels against a path whose screen length is
+   3x that.
+2. **A dashed construction line needs `stroke-dasharray` for its APPEARANCE**
+   and cannot also use it for its reveal. The second use silently destroys the
+   first, with no error anywhere.
+
+The tell was the computed style, not the source. The source is correct SVG; it
+is the interaction between two features that is not.
+
+### What replaced it
+
+Each element gets the reveal that matches what it physically is, which is also
+the more truthful drawing:
+
+| Element | Reveal | Why |
+|---|---|---|
+| grid, datums | `x2`/`y2` extends from the start point | works with any dasharray |
+| construction arcs | `r` grows from 0 | what a compass actually does |
+| solid outlines | real `getTotalLength()` dashoffset | genuine draw-on |
+| control points | `r` with a back ease | a discrete event, not a sweep |
+| labels | opacity | nothing to draw |
+
+`getTotalLength()` is called once per solid element at mount — never per frame,
+and only while the preloader is up and nothing else is competing for the main
+thread.
+
+### And a second one on top of it: a paused timeline has applied nothing
+
+With the reveal fixed, the drawing still rendered with every *label* visible at
+progress 0. A paused GSAP timeline has not applied any `from` state until
+something scrubs it, and on an occluded tab nothing ever does. Elements whose
+initial state is only expressed in the timeline will render in their authored
+DOM state — for text, `opacity: 1`.
+
+Anything whose hidden state matters on frame one must be hidden in CSS or in
+the markup, not only in the tween. `.cad-t { opacity: 0 }` for that reason.
+
+### Verification note: rAF polling does not work on an occluded tab
+
+Two probes timed out at 45s here. `requestAnimationFrame` loops and
+`setTimeout` polls both stall because the window is behind — real-time GSAP
+timelines barely advance between calls. What does work:
+
+- `__qa.cad(p)` to park the drawing at a known progress and freeze it, then
+  screenshot. This is the only way to see a progress-scrubbed sequence at a
+  chosen point, and it is the SVG-side equivalent of `tick()`.
+- Successive screenshots. Each one fronts the tab briefly and advances the
+  animation, which is how the resolution was caught mid-flight at 081 with the
+  outlines taking their fill and the construction still present.
+- Temporarily raising `PRELOADER.minDuration` to hold the plate open. Reverted
+  after — a held preloader that ships is a broken site.
+
+### Fixed while in here: the panel seams
+
+Five `flex-1` panels across a viewport whose width is not divisible by five
+land on fractional boundaries — 313.6px, 627.2px and so on at 1568px — and each
+edge rounds independently, leaving hairline gaps. The scene renders live behind
+the plate, so those gaps showed as two or three short bright slivers wherever
+the mark or a sweep line sat behind a seam. Present since the panels were
+introduced; `elementsFromPoint` at the sliver returned no SVG element, which is
+what identified it as a gap rather than something drawn. One pixel of overlap
+closes them, and the panels leave vertically so overlapping horizontally costs
+nothing.
