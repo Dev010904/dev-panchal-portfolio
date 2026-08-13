@@ -104,6 +104,49 @@ export const workHandle = {
  */
 export const archiveHandle = { scroll: 0, hover: -1 };
 
+/**
+ * THE GLASS STATE.
+ *
+ * `amount` is the single authority — 0 is machined graphite, 1 is optical
+ * glass — and it is the MAXIMUM of two independent sources: the Deconstruction
+ * scrub window, and the hero hover. Maximum rather than sum, because they can
+ * overlap when someone hovers the mark at the top of the pinned section and
+ * adding them would drive the crossfade past 1 and clip the solid out early.
+ *
+ * `hover` is kept separately so the hero's asymmetric ease (slow in, slower
+ * out) can be applied to it without the scrub inheriting a lag it should not
+ * have — a scrubbed value must track the scroll exactly.
+ *
+ * Lives here rather than in the store for the usual reason: written and read
+ * every frame, and routing it through React would re-render the scene tree.
+ */
+export const glassHandle = {
+  /** 0..1 resolved glassiness. Read by the mark. */
+  amount: 0,
+  /** 0..1 hero hover, eased. */
+  hover: 0,
+  /** True while the pointer is genuinely over the mark's geometry. */
+  over: false,
+};
+
+/**
+ * VOLUMETRIC QUALITY, at runtime.
+ *
+ * The raymarch is the single most expensive thing on the site and its cost is
+ * `screen coverage x steps`, neither of which can be reasoned about reliably
+ * from source — the first attempt at sizing the volume hung the browser hard
+ * enough that screenshot injection timed out. So the step count is a handle
+ * the QA harness can turn while the page runs, and the ladder is chosen from a
+ * MEASUREMENT rather than from a guess.
+ *
+ * `steps: 0` disables the layer outright, which is also the mobile path.
+ */
+export const volumetricHandle = {
+  steps: 0,
+  /** Set once from the measured hero p50. See Volumetrics.tsx. */
+  calibrated: false,
+};
+
 /** Section wipe progress, 0..1. Driven by GSAP on navigation. */
 export const wipeHandle = { value: 0, active: false };
 
@@ -135,4 +178,7 @@ export function resetHandles() {
   blastHandle.spin = 0;
   blastHandle.held = false;
   blastHandle.heldFor = 0;
+  glassHandle.amount = 0;
+  glassHandle.hover = 0;
+  glassHandle.over = false;
 }

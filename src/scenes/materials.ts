@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 
+import { GLASS } from '@/config/animation';
 import { lensUniforms, withLens } from '@/scenes/lens';
 
 /**
@@ -350,4 +351,70 @@ export function createGhostMaterial() {
   };
 
   return mat;
+}
+
+/**
+ * THE GLASS STATE — optical glass, not a transparent material.
+ *
+ * The difference matters and is the whole reason this is a separate material
+ * set rather than an animated `transmission` on the graphite. Setting
+ * `transmission` above zero flips a shader DEFINE, so animating it from 0
+ * would recompile the program on the first hover and drop a frame at exactly
+ * the moment the interaction is supposed to feel liquid. A second, permanently
+ * compiled material crossfaded against the first costs one extra draw per part
+ * while the crossfade is running and nothing at either end of it.
+ *
+ * `dispersion` is read defensively. It landed on `MeshPhysicalMaterial` in
+ * three r166 and this project is on r171, so it is present — but assigning an
+ * unknown property to a three material is silent, and a silently missing
+ * wavelength split is much harder to notice than a thrown error.
+ */
+export function createGlassMaterials(count: number, isEmber: (i: number) => boolean) {
+  const mats: THREE.MeshPhysicalMaterial[] = [];
+
+  for (let i = 0; i < count; i++) {
+    // The ember inlay is never rendered as glass — see the note in
+    // MarkObject's frame loop. A material is still built for it so the array
+    // indices line up with `parts`, and it simply never becomes visible.
+    const ember = isEmber(i);
+    const m = new THREE.MeshPhysicalMaterial({
+      color: new THREE.Color(ember ? '#ffb089' : '#e8eef8'),
+      // A dielectric. Any metalness here and it stops transmitting and starts
+      // looking like dirty chrome.
+      metalness: 0,
+      roughness: GLASS.roughness,
+      transmission: 1,
+      thickness: GLASS.thickness,
+      ior: GLASS.ior,
+      envMapIntensity: GLASS.envMapIntensity,
+      attenuationColor: new THREE.Color(
+        ember ? GLASS.emberAttenuationColor : GLASS.attenuationColor,
+      ),
+      attenuationDistance: ember
+        ? GLASS.emberAttenuationDistance
+        : GLASS.attenuationDistance,
+      transparent: true,
+      opacity: 0,
+      // Glass must not write depth: the two bowls sit at different depths and
+      // seeing the far one THROUGH the near one is the entire point of putting
+      // the mark in this state at all.
+      depthWrite: false,
+      // Both faces. On a transmissive body the far wall is a real part of the
+      // silhouette — cull it and the object reads as a shell rather than as
+      // something solid you are looking into.
+      side: THREE.DoubleSide,
+    });
+
+    if ('dispersion' in m) {
+      (m as THREE.MeshPhysicalMaterial & { dispersion: number }).dispersion =
+        GLASS.dispersion;
+    } else if (process.env.NODE_ENV !== 'production') {
+      console.warn('[materials] MeshPhysicalMaterial.dispersion missing — three < r166?');
+    }
+
+    m.visible = false;
+    mats.push(m);
+  }
+
+  return mats;
 }

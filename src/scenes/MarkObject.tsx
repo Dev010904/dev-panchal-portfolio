@@ -7,13 +7,15 @@ import * as THREE from 'three';
 import {
   BLAST,
   DECONSTRUCTION,
+  GLASS,
   HERO,
   LENS,
   MARK_AMBIENT,
   shotPresence,
   type ShotName,
 } from '@/config/animation';
-import { blastHandle } from '@/scenes/handles';
+import { blastHandle, glassHandle } from '@/scenes/handles';
+import { MARK_LAYER } from '@/scenes/lightDepth';
 import { GLSL3, glsl } from '@/lib/glsl';
 import { buildMark, buildPins, sampleMarkSurface } from '@/lib/mark/geometry';
 import { MARK_SCALE, PINS } from '@/lib/mark/paths';
@@ -22,6 +24,7 @@ import {
   cloneMarkMaterial,
   createEdgeMaterial,
   createGhostMaterial,
+  createGlassMaterials,
   createMaterials,
   createXrayEdgeMaterial,
 } from '@/scenes/materials';
@@ -38,6 +41,11 @@ import { sceneState } from '@/store/scene';
  *   exploded   parts translated along their own seating axes
  *   wireframe  edges + a fresnel ghost; solid crossfades out
  *   dissolved  area-weighted surface point cloud on a curl field
+ *   glass      optical glass — real transmission, thickness and dispersion.
+ *              The one state that shows what the object actually IS: the two
+ *              bowls sit at different depths, and glass is the only way to see
+ *              the far one through the near one. The ember inlay stays solid
+ *              and is refracted THROUGH the surrounding glass.
  *
  * The four are driven by a single `progress` ref the Deconstruction timeline
  * scrubs, so the whole thing is a pure function of scroll and can be run
@@ -76,6 +84,7 @@ export function MarkObject({
   const edgeRefs = useRef<THREE.LineSegments[]>([]);
   const xrayRefs = useRef<THREE.LineSegments[]>([]);
   const ghostRefs = useRef<THREE.Mesh[]>([]);
+  const glassRefs = useRef<THREE.Mesh[]>([]);
   const pinsRef = useRef<THREE.InstancedMesh>(null!);
   const pointsRef = useRef<THREE.Points>(null!);
 
@@ -103,6 +112,16 @@ export function MarkObject({
    * The lens has no stagger — it is one region of screen, so one material.
    */
   const xrayMat = useMemo(() => createXrayEdgeMaterial(), []);
+
+  /**
+   * The glass set. Permanently compiled and crossfaded against the solids
+   * rather than animating `transmission` on them — see createGlassMaterials
+   * for why an animated transmission drops a frame on the first hover.
+   */
+  const glassMats = useMemo(
+    () => createGlassMaterials(parts.length, (i) => parts[i].spec.material === 'ember'),
+    [parts],
+  );
 
   const edgeGeos = useMemo(
     () => parts.map((p) => new THREE.EdgesGeometry(p.geometry, 26)),
@@ -246,10 +265,24 @@ export function MarkObject({
   /** Scratch for the drawing-buffer size, so the frame loop allocates nothing. */
   const bufferSize = useMemo(() => new THREE.Vector2(), []);
 
+  /**
+   * Scratch for the hero hover hit test. A raycast rather than a projected
+   * bounding sphere, because the mark is a ligature with a large empty counter
+   * in the middle of its bounding box — a sphere test would arm the glass
+   * while the cursor sat in the hole of the D, which reads as the effect being
+   * triggered by nothing. Same approach the Work arc uses for its own hover,
+   * and for the same reason.
+   */
+  const raycaster = useMemo(() => new THREE.Raycaster(), []);
+  const hoverNdc = useMemo(() => new THREE.Vector2(), []);
+  const hoverTargets = useMemo<THREE.Mesh[]>(() => [], []);
+  const hoverHits = useMemo<THREE.Intersection[]>(() => [], []);
+
   useFrame((state, delta) => {
     const s = sceneState();
 
     const t = state.clock.elapsedTime;
+    const dt = Math.min(delta, 0.05);
     const p = handles.current.progress.value;
     const frozen = s.reducedMotion;
 
@@ -263,7 +296,20 @@ export function MarkObject({
       !s.isMobile &&
       !frozen &&
       !s.menuOpen &&
-      (LENS.shots as readonly string[]).includes(s.shot);
+      (LENS.shots as readonly string[]).includes(s.shot) &&
+      // THE GLASS TAKES OVER FROM THE LENS.
+      //
+      // Both are reveals of the same thing — what is inside the object — and
+      // running them together put a cyan X-ray scan region on top of a
+      // refracting glass body on a single hover. Two simultaneous reveals on
+      // one gesture is the difference between an instrument and a demo.
+      //
+      // Since `armed` feeds a damped amount, this is a crossfade rather than a
+      // switch: the lens eases out exactly as the glass eases in. The lens is
+      // unchanged everywhere it is not competing — it still opens on the hero
+      // anywhere the cursor is NOT on the mark, and through the whole
+      // Deconstruction outside the glass window.
+      glassHandle.amount < 0.5;
 
     state.gl.getDrawingBufferSize(bufferSize);
     updateLens(Math.min(delta, 0.05), bufferSize, state.gl.getPixelRatio());
@@ -312,7 +358,8 @@ export function MarkObject({
       amb.latched = false;
     }
 
-    const dt = Math.min(delta, 0.05);
+    // `dt` is hoisted to the top of the frame now — the glass crossfade and
+    // the hover ease both need it earlier than this.
     amb.fade += ((post ? 1 : 0) - amb.fade) * (1 - Math.exp(-A.fadeRate * dt));
 
     if (group.current) {
@@ -372,7 +419,52 @@ export function MarkObject({
     const wireAmt = seg(p, K.wireframe) - seg(p, K.crystallise);
     const dissolveAmt = seg(p, K.dissolve) - seg(p, K.crystallise);
 
-    const solidOpacity = (1 - Math.max(wireAmt, dissolveAmt)) * presence.current;
+    // ── Glass ───────────────────────────────────────────────────────────────
+    // Two sources, resolved by MAX rather than by sum: hovering the mark at
+    // the very top of the pinned section overlaps the scrub window, and adding
+    // them would drive the crossfade past 1 and clip the solid out early.
+    const glassScrub = seg(p, GLASS.keys.in) - seg(p, GLASS.keys.out);
+
+    // The hero hover. Only where the mark is the subject and the object is not
+    // already doing something else — hovering it mid-dissolve would fight the
+    // particle state for the same material.
+    const canHover =
+      !frozen && !s.isMobile && !s.menuOpen && s.shot === 'hero' && lensHandle.present;
+
+    if (canHover) {
+      hoverNdc.set(s.pointer[0], s.pointer[1]);
+      raycaster.setFromCamera(hoverNdc, state.camera);
+      hoverTargets.length = 0;
+      for (let i = 0; i < partRefs.current.length; i++) {
+        const m = partRefs.current[i];
+        if (m) hoverTargets.push(m);
+      }
+      hoverHits.length = 0;
+      raycaster.intersectObjects(hoverTargets, false, hoverHits);
+      glassHandle.over = hoverHits.length > 0;
+    } else {
+      glassHandle.over = false;
+    }
+
+    // Asymmetric: slower coming back than going in. A symmetric ease reads as
+    // a rollover state on a button; this reads as a material settling.
+    const hoverGoal = glassHandle.over ? 1 : 0;
+    const hoverRate = glassHandle.over ? GLASS.hover.inRate : GLASS.hover.outRate;
+    glassHandle.hover +=
+      (hoverGoal - glassHandle.hover) * (1 - Math.exp(-hoverRate * dt));
+    if (glassHandle.hover < 1e-4 && hoverGoal === 0) glassHandle.hover = 0;
+
+    // Mobile falls back to the wireframe read: the glass state costs a
+    // transmission pass, which is a full extra scene render, and a phone is
+    // exactly where that is not affordable.
+    const glassAmt = s.isMobile
+      ? 0
+      : Math.max(glassScrub, glassHandle.hover) * (1 - Math.max(wireAmt, dissolveAmt));
+    glassHandle.amount = glassAmt;
+
+    // Base opacity BEFORE glass. The per-part glass weight is applied inside
+    // the loop, because the ember inlay is deliberately excluded from it.
+    const bodyOpacity = (1 - Math.max(wireAmt, dissolveAmt)) * presence.current;
     const edgeOpacity = Math.min(wireAmt, 1 - dissolveAmt * 0.85);
 
     // ── Parts ───────────────────────────────────────────────────────────────
@@ -415,9 +507,45 @@ export function MarkObject({
         tumble * blastSpin[i] * 0.6 +
         (shake > 0 ? (Math.random() - 0.5) * 2 * blastHandle.shake * BLAST.shake.spin : 0);
 
+      /**
+       * THE EMBER INLAY DOES NOT TURN TO GLASS, AND THAT IS THE WHOLE EFFECT.
+       *
+       * The first version turned every part to glass and the mark vanished
+       * completely — which was correct behaviour, not a bug in the material.
+       * `transmission: 1` means the surface shows what is BEHIND it, and what
+       * is behind this object is #08080A void. Clear glass in front of nothing,
+       * lit by a near-black environment, is nothing. Refraction needs something
+       * to refract.
+       *
+       * So the inlay stays solid and stays lit. It is the one bright object in
+       * the assembly, it sits INSIDE the spine's channel, and the spine is now
+       * glass around it — so the ember bar is seen through 1.35 units of
+       * dispersive glass and splits at its edges. That is exactly the brief,
+       * and it is also the only reading of the glass state that has anything
+       * in it to see.
+       */
+      const isEmber = parts[i].spec.material === 'ember';
+      const partGlass = isEmber ? 0 : glassAmt;
+
       const m = solidMats[i];
+      const solidOpacity = bodyOpacity * (1 - partGlass);
       m.opacity = solidOpacity;
       m.visible = solidOpacity > 0.01;
+
+      // The glass twin rides the same transform. Hidden below the threshold
+      // rather than left at opacity ~0, because a visible transmissive
+      // material costs a full extra scene render whatever its opacity — the
+      // renderer builds the transmission buffer for it regardless.
+      const glassMesh = glassRefs.current[i];
+      if (glassMesh) {
+        const glassOpacity = bodyOpacity * partGlass;
+        glassMesh.position.copy(tmp);
+        glassMesh.rotation.x = mesh.rotation.x;
+        glassMesh.rotation.z = mesh.rotation.z;
+        glassMats[i].opacity = glassOpacity;
+        glassMats[i].visible = glassOpacity > 0.01;
+        glassMesh.visible = glassOpacity > 0.01;
+      }
 
       const edge = edgeRefs.current[i];
       if (edge) {
@@ -457,8 +585,12 @@ export function MarkObject({
     if (pinsRef.current) {
       const e = THREE.MathUtils.clamp(explodeAmt * 1.35 - 0.25, 0, 1);
       pinsRef.current.position.copy(tmp.copy(pinExplode).multiplyScalar(e * e));
-      pinMat.opacity = solidOpacity;
-      pinsRef.current.visible = solidOpacity > 0.01;
+      // The locating pins go through the inlay, so they follow the inlay's
+      // rule rather than the body's: they stay solid through the glass state
+      // and are seen refracted through the spine, which is what makes the
+      // glass read as containing hardware rather than as an empty shell.
+      pinMat.opacity = bodyOpacity;
+      pinsRef.current.visible = bodyOpacity > 0.01;
     }
 
     // ── Dissolve ────────────────────────────────────────────────────────────
@@ -475,14 +607,38 @@ export function MarkObject({
       <group ref={inner}>
         {parts.map((part, i) => (
           <group key={part.spec.id}>
+            {/* `layers.enable(MARK_LAYER)` puts this mesh in front of the
+                light camera as well as the main one. That pass is what the
+                volumetric shafts test against, so the god-rays fan around the
+                mark's real silhouette. `enable` rather than `set` — set would
+                REPLACE layer 0 and the part would vanish from the actual
+                render, which is a spectacular way to lose an object. */}
             <mesh
               ref={(el) => {
-                if (el) partRefs.current[i] = el;
+                if (el) {
+                  partRefs.current[i] = el;
+                  el.layers.enable(MARK_LAYER);
+                }
               }}
               geometry={part.geometry}
               material={solidMats[i]}
               castShadow={false}
               receiveShadow={false}
+            />
+            {/* The glass twin. Also on MARK_LAYER: when the object is fully
+                glass the solid is hidden, and without this the depth map would
+                come back empty and the shafts would stop being occluded at
+                exactly the moment the object is most interesting. */}
+            <mesh
+              ref={(el) => {
+                if (el) {
+                  glassRefs.current[i] = el;
+                  el.layers.enable(MARK_LAYER);
+                }
+              }}
+              geometry={part.geometry}
+              material={glassMats[i]}
+              visible={false}
             />
             <mesh
               ref={(el) => {

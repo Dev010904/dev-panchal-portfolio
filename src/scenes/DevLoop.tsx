@@ -9,7 +9,8 @@ import { getLenis } from '@/components/SmoothScroll';
 import { SWEEP } from '@/config/animation';
 import { gsap, ScrollTrigger } from '@/lib/gsap';
 import { runSteps, stepCount } from '@/lib/steps';
-import { blastHandle } from '@/scenes/handles';
+import { blastHandle, glassHandle, volumetricHandle } from '@/scenes/handles';
+import { lightDepth, setLightPosition } from '@/scenes/lightDepth';
 import { nearestOnLine, sweepDebug, sweepScreen } from '@/scenes/sweep';
 import { useScene } from '@/store/scene';
 
@@ -663,6 +664,48 @@ export function DevLoop() {
       };
     };
 
+    /**
+     * Volumetric step count, at runtime, plus the glass state.
+     *
+     * `volumetric(n)` sets the raymarch steps; 0 turns the layer off. This
+     * exists because the cost of the shafts is `screen coverage x steps` and
+     * neither is predictable from source — sizing the volume by reasoning hung
+     * the browser badly enough that screenshot injection timed out, twice.
+     * Turning the knob on a live page and profiling each rung is the only
+     * honest way to pick one.
+     */
+    const volumetric = (steps?: number) => {
+      if (typeof steps === 'number') {
+        volumetricHandle.steps = Math.max(0, Math.min(64, Math.round(steps)));
+        volumetricHandle.calibrated = true;
+      }
+      return { steps: volumetricHandle.steps, calibrated: volumetricHandle.calibrated };
+    };
+
+    /**
+     * Move the shaft light on a live page, so the position can be CHOSEN by
+     * looking at the result rather than derived on paper. Moves the depth
+     * camera and the shader uniform together — they must never disagree.
+     */
+    const shaftLight = (x?: number, y?: number, z?: number) => {
+      if (typeof x === 'number' && typeof y === 'number' && typeof z === 'number') {
+        setLightPosition(x, y, z);
+        scene.traverse((o) => {
+          const m = (o as unknown as {
+            material?: { uniforms?: Record<string, { value: { set(x: number, y: number, z: number): void } }> };
+          }).material;
+          m?.uniforms?.uLightPos?.value.set(x, y, z);
+        });
+      }
+      return lightDepth.camera?.position.toArray() ?? null;
+    };
+
+    /** Force the glass state without a pointer, for capture and measurement. */
+    const glass = (v?: number) => {
+      if (typeof v === 'number') glassHandle.hover = Math.max(0, Math.min(1, v));
+      return { amount: glassHandle.amount, hover: glassHandle.hover, over: glassHandle.over };
+    };
+
     /** Move the virtual pointer without a real mouse. */
     const pointer = (x: number, y: number) => {
       window.dispatchEvent(
@@ -742,6 +785,9 @@ export function DevLoop() {
       blast,
       perf,
       cad,
+      volumetric,
+      glass,
+      shaftLight,
       cursorLag,
       loopOrder,
       loopOrderSelfTest,

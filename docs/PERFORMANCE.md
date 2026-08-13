@@ -793,3 +793,130 @@ introduced; `elementsFromPoint` at the sliver returned no SVG element, which is
 what identified it as a gap rather than something drawn. One pixel of overlap
 closes them, and the panels leave vertically so overlapping horizontally costs
 nothing.
+
+---
+
+## Volumetric light and the glass state — 2026-08-13
+
+Three things in this section were wrong on the first attempt and each was found
+by looking at the page, not by reasoning about the code. Recording all three,
+because two of them are the kind that look like a broken effect and are
+actually a broken *number*.
+
+### 1. Sizing the volume by reasoning hung the browser
+
+The scattering volume started at a half-extent of 7.5 world units. The hero
+camera sits 4.9 units out, so the camera was INSIDE the box and its back faces
+covered the entire viewport: 1905×901 fragments × 48 steps × a dependent
+texture fetch each, about **82 million samples a frame**. The Intel Iris Xe
+stopped dead — screenshot injection timed out at 5s, then again, and the tab
+had to be navigated away to recover.
+
+3.2 keeps the volume a region around the mark. It is also the better art
+direction: a full-screen scattering layer reads as a filter, not as light in a
+room.
+
+**The step count is now chosen on the visitor's machine, not here.** The layer
+boots on the LOW rung (24) and a calibration pass over 45 real frame deltas at
+hero either promotes it to 48 or leaves it. Two rounds, so a machine that has
+headroom at 24 but not at 48 can come back down; capped at two so a borderline
+machine settles instead of oscillating. Guarded on `visibilityState`, because
+an occluded tab throttles rAF and would downgrade every machine for a reason
+that has nothing to do with the machine.
+
+`__qa.volumetric(n)` and `__qa.shaftLight(x,y,z)` turn both knobs on a live
+page. Both exist because guessing was demonstrably worse.
+
+### 2. The shafts were invisible, and the phase function said why
+
+The first light position was the KEY Lightformer's, `[-4.5, 4.2, 5]`, on the
+reasoning that the key defines the form. It produced no shafts at all.
+
+The key sits at **z = +5, the same side as the camera**. So `dot(viewRay,
+toLight) ≈ -1`, and Henyey-Greenstein at g = +0.72 returns **0.0075** there
+against **1.75** at its peak — a factor of 230. The volume was integrating
+correctly and scattering essentially nothing toward the eye.
+
+God-rays are a backlit phenomenon. The light moved to `[-1.1, 3.1, -4.5]` —
+above and behind the mark, the rim's role rather than the key's.
+
+**The occlusion was then proved, not assumed.** Putting the light directly
+behind the mark produces the spine's shadow column and visible light through
+the D's counter — exactly what a real occluder does and nothing a radial
+gradient could fake. The shipped position is the restrained version of that.
+
+Density came down from 0.19 to 0.14 for one reason: at 0.19 the upper-left of
+the frame came off black, and this page's design rests on #08080A staying
+#08080A.
+
+### 3. `profile()` cannot see any of this
+
+`profile()` times `advance()`, which returns when draw calls are SUBMITTED. The
+volumetric is almost pure fragment cost, so the profiler is blind to it — three
+alternating A/B runs read 9.3/9.5/9.1ms with the layer off and 9.0/6.0/8.4ms
+with it on, i.e. no measurable difference and sometimes *faster*, which is not
+a believable result. GPU-inclusive timing needs `gl.finish()` after the frame,
+and the shipped calibration uses real frame deltas instead.
+
+### The glass state: transmission over a void is nothing
+
+Turning every part to glass made the mark **vanish completely**, and that was
+correct behaviour rather than a bug. `transmission: 1` shows what is behind the
+surface; what is behind this object is #08080A void, lit by a deliberately dim
+environment. Clear glass in front of nothing is nothing.
+
+The fix is also the brief: **the ember inlay stays solid.** It sits inside the
+spine's channel, the spine is now glass around it, and the bar is seen through
+1.35 units of dispersive glass and splits at its edges. The locating pins
+follow the same rule. Now there is something in the object to refract, and the
+dispersion is visible as red fringing on the arc edges.
+
+Two further notes:
+
+- **The glass takes over from the lens.** Hovering the mark previously armed
+  both the X-ray lens and the glass, putting a cyan scan region on top of a
+  refracting body on one gesture. `lensHandle.armed` now requires
+  `glassHandle.amount < 0.5`, which crossfades rather than switches because
+  `armed` feeds a damped value.
+- **A separate material set, not an animated `transmission`.** Crossing
+  `transmission` above 0 flips a shader define and recompiles the program,
+  which would drop a frame on the first hover.
+
+### Caustics were built twice and CUT
+
+Both attempts read as an artefact rather than as light, and the brief's own
+rule is that an effect which reads as a demo gets cut.
+
+**Attempt one** derived the caustic from the Laplacian of the mark's
+light-space depth — where the surface is concave, refracted rays converge. It
+came back as a blocky, stair-stepped silhouette with rainbow fringing at every
+texel boundary. **That was a real bug and it is worth knowing:** the depth
+target was `RGBADepthPacking` into an 8-bit target with `LinearFilter`, and
+bilinear filtering blends the four packed BYTES of adjacent texels
+independently. The low byte of one depth interpolated with the low byte of
+another does not decode to anything near the depth between them. Packed depth
+cannot be filtered. The target is half-float now, which fixed the fringing —
+and which the shafts benefit from too, so the change stayed.
+
+**Attempt two**, on a clean 512² float map with a multi-scale stencil, still
+produced a hard-edged wedge with a stair-stepped boundary.
+
+The reason is geometric and not fixable by tuning: **this mark is a flat
+extrusion.** Its light-space depth is piecewise constant, so the Laplacian is a
+delta function at the silhouette and zero everywhere else — a hard band along
+the shadow edge, never a focused pool. Widening the stencil blurs the band into
+a grey wedge; it does not turn it into a caustic.
+
+A real one needs the refracted ray DIRECTIONS, not the depth: a pass that
+traces through both surfaces of the glass and splats where the rays land. That
+is a genuine piece of work and was out of scope here.
+
+### Browser note
+
+Edge dropped mid-section (the extension disconnected and the dev server on 3000
+went with it). The rest of this section was verified in **Brave** —
+`Chrome/151.0.0.0`, no `Edg/` token — on the **same GPU and the same ANGLE
+D3D11 path**, `checkShaderErrors: true`. Both preconditions for detecting X3595
+therefore still hold, and the result is still zero: 47 programs linked, two
+console messages, both the React DevTools INFO line, with the reader proved
+live on that exact load before the absence was believed.

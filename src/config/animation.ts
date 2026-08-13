@@ -1133,6 +1133,187 @@ export const LENS = {
 } as const;
 
 /**
+ * VOLUMETRIC LIGHT — raymarched scattering from the key light.
+ *
+ * Atmosphere, not lens flare. The distinction is not stylistic: a flare is
+ * drawn AT the light and a volumetric is integrated ALONG the view ray, so the
+ * shafts here are occluded by the mark's own geometry and fan around its
+ * silhouette. If it ever reads as a sprite pinned to a bright spot, it is
+ * broken rather than merely ugly.
+ *
+ * HOW THE OCCLUSION IS REAL. A small orthographic depth map is rendered from
+ * the key light's position each frame, containing the mark and nothing else
+ * (it is restricted to `MARK_LAYER`). Every raymarch sample projects into that
+ * map and is either lit or shadowed. That is the same test a shadow map does,
+ * evaluated at points in mid-air instead of on a surface, which is exactly
+ * what a god-ray is.
+ */
+export const VOLUMETRIC = {
+  /**
+   * Raymarch steps, desktop. Dropped to `stepsLow` when the hero's measured
+   * p50 exceeds `budgetMs`, and the volume is not mounted at all on mobile.
+   * The shader's loop bound is a compile-time constant of 64 — a `uniform`
+   * loop count is legal in ESSL3 but generates a dynamic loop that ANGLE
+   * unrolls badly, so the count is a uniform BREAK inside a fixed loop.
+   */
+  steps: 48,
+  stepsLow: 24,
+  budgetMs: 11,
+  /**
+   * Half-extent of the scattering volume, world units.
+   *
+   * THIS NUMBER IS A PERFORMANCE PARAMETER, NOT AN ART ONE, AND IT WAS
+   * ORIGINALLY 7.5 — WHICH HUNG THE BROWSER.
+   *
+   * The hero camera sits 4.9 units out, so a 7.5 half-extent put the camera
+   * INSIDE the box and its back faces covered the entire viewport. That is
+   * 1905x901 fragments x 48 steps x a texture fetch each — around 82 million
+   * dependent samples per frame — and an Intel Iris Xe simply stops. The tab
+   * became unresponsive to the point that screenshot injection timed out.
+   *
+   * 3.2 keeps the volume a region AROUND the mark rather than a global haze:
+   * the camera is outside it, its screen coverage is roughly a third of the
+   * frame, and the cost falls with it. It is also the better art direction —
+   * shafts belong to the object, and a full-screen scattering layer is what
+   * makes a volumetric read as a filter rather than as light in a room.
+   */
+  extent: 3.2,
+  /** Longest distance any single ray integrates, world units. */
+  maxDistance: 14,
+  /**
+   * Scattering strength. Chosen by looking, not by arithmetic: 0.19 was
+   * visible but lifted the upper-left of the frame off black, and this page's
+   * entire design rests on #08080A staying #08080A. Above ~0.3 it stops being
+   * air and becomes smoke.
+   */
+  density: 0.14,
+  /**
+   * Henyey-Greenstein anisotropy. Positive is forward scattering, which is
+   * what makes shafts brighten as the view aligns with the light rather than
+   * glowing uniformly — the single parameter that separates atmosphere from
+   * a screen-space glow.
+   */
+  anisotropy: 0.72,
+  /** Inverse-square softening, so the falloff is not a hard 1/d². */
+  attenuation: 0.045,
+  /**
+   * Light-space depth map resolution. 256 is plenty for the shafts, which only
+   * need a silhouette, but the caustics take a LAPLACIAN of this map and a
+   * second derivative is far more sensitive to resolution than a threshold is.
+   */
+  shadowSize: 512,
+  /** Orthographic half-extent of the light camera, world units. */
+  lightExtent: 2.8,
+  lightNear: 0.5,
+  lightFar: 16,
+  /**
+   * THE RIM, NOT THE KEY — and this was a real error, caught on screen.
+   *
+   * The first version used the KEY Lightformer's position, `[-4.5, 4.2, 5]`,
+   * on the reasoning that the key is the light that defines the form. It
+   * produced no visible shafts at all, and the phase function says exactly why:
+   * the key sits at z = +5, the SAME side as the camera. So `dot(viewRay,
+   * toLight)` is about -1, and Henyey-Greenstein at g = +0.72 returns 0.0075
+   * there against 1.75 at its peak — a factor of 230. The volume was being
+   * integrated correctly and scattering almost nothing toward the eye.
+   *
+   * God-rays are a BACKLIT phenomenon. You see shafts when the source is
+   * behind the subject and the light scatters forward, around the silhouette,
+   * into your eye. So the volumetric light is the RIM Lightformer at
+   * `[-6, 1.4, -5.5]` — the one Stage.tsx already calls "the single most
+   * important light: it draws the silhouette". It is now drawing the silhouette
+   * in the air as well as on the object, which is the same job.
+   *
+   * The colour follows it: cold, off the rim's #4d86c4, so the shafts belong to
+   * that light rather than introducing a third one.
+   *
+   * The final position is the rim pulled ONTO the object's axis: above, behind
+   * and a little left of the mark rather than out at x = -6. At the rim's own
+   * position the mark subtends almost none of the light's cone from the hero
+   * camera, so the volume integrated a smooth gradient with no structure in it
+   * — atmosphere, but no shafts. Verified by moving it directly behind the
+   * mark, where the spine's shadow column and light through the D's counter
+   * both appear exactly as a real occluder would produce them. That test is
+   * what proves the depth pass is connected; this position is the restrained
+   * version of it, chosen on screen with `__qa.shaftLight()`.
+   */
+  lightPosition: [-1.1, 3.1, -4.5] as [number, number, number],
+  /** Depth-compare bias. Too small and the mark self-shadows into stripes. */
+  bias: 0.0025,
+  color: '#8fb6dd',
+  /** How fast the whole layer fades in and out. The k in 1 - exp(-k·dt). */
+  fadeRate: 2.2,
+  /** Shots where shafts are live. The mark has to be the subject. */
+  shots: ['hero', 'resolve', 'exploded', 'dissolved', 'release'] as const,
+} as const;
+
+/**
+ * THE GLASS STATE — the mark's fifth state.
+ *
+ * assembled / exploded / wireframe / dissolved / GLASS. Real transmission,
+ * thickness, dispersion and caustics, not a tinted transparent material: the
+ * point is that you can see the two bowls sitting at different depths THROUGH
+ * the object, which is the one thing the opaque graphite version can never
+ * show and the whole reason the mark is built the way it is.
+ *
+ * The ember inlay keeps its own attenuation, so it refracts and splits through
+ * the surrounding glass instead of being a flat orange bar behind it.
+ */
+export const GLASS = {
+  ior: 1.52,
+  thickness: 1.35,
+  /**
+   * Dispersion — the wavelength split. `MeshPhysicalMaterial.dispersion`
+   * landed in three r166 and this project is on r171, so it is available; it
+   * is still read defensively at construction because a silent downgrade of
+   * the whole material is worse than a missing sparkle.
+   */
+  dispersion: 0.42,
+  roughness: 0.06,
+  /** Glass is a dielectric. Metalness above 0 here just makes it look dirty. */
+  envMapIntensity: 1.7,
+  /** Beer-Lambert tint through the body. */
+  attenuationDistance: 4.0,
+  attenuationColor: '#9fb4d0',
+  emberAttenuationDistance: 1.1,
+  emberAttenuationColor: '#ff8a4f',
+  /**
+   * THE HERO HOVER. Slow in, slower out — a snap here would read as a
+   * rollover state on a button rather than as a material change in an object.
+   * The k in 1 - exp(-k·dt), so it is frame-rate independent like everything
+   * else.
+   */
+  hover: { inRate: 1.7, outRate: 1.15 },
+  /**
+   * THE DECONSTRUCTION WINDOW.
+   *
+   * Sits between the resolve hold and the annotations — the object turns to
+   * glass, explodes while still glass, then returns to metal before the
+   * leader lines arrive. Nothing else is competing for the material there, so
+   * this is additive and none of the existing keys move.
+   */
+  keys: {
+    in: { at: 0.19, dur: 0.075 },
+    out: { at: 0.32, dur: 0.09 },
+  },
+  /**
+   * CAUSTICS WERE CUT. Kept as a note rather than a config block.
+   *
+   * Two implementations were built and both read as an artefact rather than
+   * as light — see docs/PERFORMANCE.md for the full account. The short version
+   * is that this mark is a FLAT EXTRUSION, so its light-space depth is
+   * piecewise constant and the Laplacian that drives a screen-space caustic is
+   * a delta function at the silhouette and zero everywhere else. That is a
+   * hard band along the shadow edge, not a focused pool, and no amount of
+   * blurring turns one into the other.
+   *
+   * A real one needs the refracted ray directions, not the depth — i.e. a
+   * second pass that traces through both surfaces of the glass and splats
+   * where the rays land. That is a genuine piece of work and it is not this.
+   */
+} as const;
+
+/**
  * TELEMETRY HUD — the permanent bottom-corner readout.
  *
  * Furniture, not a feature. Every value is read off the renderer; nothing here

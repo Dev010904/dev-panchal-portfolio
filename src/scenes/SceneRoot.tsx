@@ -25,6 +25,7 @@ import { MarkObject } from './MarkObject';
 import { PageStructures } from './PageStructures';
 import { Stage } from './Stage';
 import { SweepLines } from './SweepLines';
+import { Volumetrics } from './Volumetrics';
 import { WipeOverlay } from './WipeOverlay';
 import { WorkScene } from './WorkScene';
 import { markHandles } from './handles';
@@ -182,6 +183,11 @@ export function SceneRoot() {
           <CameraRig />
 
           <MarkObject handles={markHandles} quality={quality} />
+          {/* MUST stay after MarkObject. R3F dispatches useFrame subscribers in
+              subscription order, so this reads the mark's transforms for THIS
+              frame when it renders the light-space depth map. Move it above and
+              the shafts silently lag the object by a frame. */}
+          <Volumetrics mobile={mobile} />
           {/* Three hairline arcs. Real geometry, so the mark occludes them. */}
           <SweepLines />
           <AnnotationProjector />
