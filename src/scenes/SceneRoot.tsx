@@ -1,6 +1,12 @@
 'use client';
 
-import { AdaptiveDpr, AdaptiveEvents, Preload, useProgress } from '@react-three/drei';
+import {
+  AdaptiveDpr,
+  AdaptiveEvents,
+  PerformanceMonitor,
+  Preload,
+  useProgress,
+} from '@react-three/drei';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
@@ -189,6 +195,28 @@ export function SceneRoot() {
           <Effects mobile={mobile || reduced} />
         </Suspense>
 
+        {/*
+          WHAT MAKES AdaptiveDpr ACTUALLY DO ANYTHING.
+
+          `AdaptiveDpr` only reacts to `state.performance.current`, and nothing
+          in R3F lowers that because a frame was slow — `regress()` is called on
+          interaction (pointer moves, via AdaptiveEvents), not on cost. So for
+          the whole life of this site AdaptiveDpr has been dropping resolution
+          when the pointer moved and never once when the GPU was actually
+          struggling, which is close to the opposite of the intent.
+
+          `PerformanceMonitor` is the piece that samples real frame times and
+          moves `current` between `min` and `max`. `factor` starts at 0.5 and is
+          nudged by onIncline/onDecline; AdaptiveDpr multiplies the dpr ceiling
+          by it. `flipflops` caps how many times it may change its mind before
+          giving up and holding, which stops a borderline machine oscillating
+          between two resolutions forever — that oscillation is far more visible
+          than simply running at the lower one.
+        */}
+        <PerformanceMonitor
+          bounds={(refreshRate) => (refreshRate > 90 ? [50, 90] : [45, 58])}
+          flipflops={3}
+        />
         <AdaptiveDpr pixelated={false} />
         <AdaptiveEvents />
         <Preload all />

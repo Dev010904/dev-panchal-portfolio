@@ -35,8 +35,11 @@ export const SCROLL = {
 export const PRELOADER = {
   /** Minimum time the counter is on screen even if assets are instant. */
   minDuration: 1.1,
-  /** How long the counter takes to catch up to real progress. */
-  counterLerp: 0.075,
+  /**
+   * How fast the counter catches up to real progress. The k in 1 - exp(-k·dt).
+   * Converted from the old fixed alpha of 0.075: -ln(1 - 0.075) × 60.
+   */
+  counterRate: 4.7,
   /** Glyph-scramble resolve of "DEV PANCHAL". */
   scramble: { perLetter: 0.055, cycles: 9, tickRate: 0.045 },
   /** The black panel split. */
@@ -686,8 +689,22 @@ export const MARQUEE = {
   /** Skew degrees per unit of scroll velocity, clamped. */
   skewFactor: 0.42,
   skewMax: 9,
-  /** How fast skew relaxes back to zero. */
-  relax: 0.09,
+  /**
+   * How fast skew relaxes back to zero. The k in 1 - exp(-k·dt).
+   *
+   * Was `relax: 0.09`, applied as a bare per-frame alpha — the last
+   * frame-rate-dependent damping on the site. 5.7 is that alpha converted at
+   * the rate it was authored for: -ln(1 - 0.09) × 60. Identical at 60Hz,
+   * correct everywhere else. On a 144Hz display the old form relaxed the skew
+   * 2.4× too fast and the elastic drag that sells the band as mass simply was
+   * not there.
+   */
+  relaxRate: 5.7,
+  /**
+   * Velocity coast-down, same conversion from the old `velocity *= 0.92`:
+   * -ln(0.92) × 60.
+   */
+  velocityDecay: 5,
   words: ['THREE.JS', 'WEBGL', 'GSAP', 'REACT', 'MOTION'],
 } as const;
 

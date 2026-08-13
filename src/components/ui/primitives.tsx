@@ -2,7 +2,7 @@
 
 import { forwardRef, useEffect, useRef, useState } from 'react';
 import { RAIL } from '@/config/animation';
-import { useTicker } from '@/lib/useTicker';
+import { addStep } from '@/lib/steps';
 import { useScene } from '@/store/scene';
 
 /**
@@ -156,6 +156,70 @@ function resolveLength(token: string): number {
 }
 
 /**
+ * ONE SHARED LOOP FOR EVERY RAIL, READS BATCHED AHEAD OF WRITES.
+ *
+ * Each rail used to run its own ticker callback that read its own rect and
+ * then immediately wrote its own opacity. Seven rails meant the sequence
+ * read → write → read → write → … seven times a frame, and every read after
+ * the first landed on a document some other rail had just dirtied. That is a
+ * forced synchronous layout per rail per frame, for the entire life of the
+ * page, and it is invisible in a profile that only looks at the render loop.
+ *
+ * Same arithmetic, same output, restructured into two passes: measure them
+ * all, then write them all. The document is dirtied once, at the end, rather
+ * than six times in the middle of being measured.
+ */
+type Rail = { el: HTMLElement; shown: number; top: number };
+
+const rails = new Set<Rail>();
+const railGeom = { rest: 0, bar: 0 };
+let railDetach: (() => void) | null = null;
+
+function measureRailGeom() {
+  const bar = document.querySelector<HTMLElement>('[data-topbar]');
+  if (!bar) return;
+  const barH = bar.getBoundingClientRect().height;
+  railGeom.bar = barH;
+  railGeom.rest = barH + resolveLength('var(--nav-clear)');
+}
+
+function railStep() {
+  const { rest, bar } = railGeom;
+  if (rest <= bar || rails.size === 0) return;
+
+  // READ PASS — every rect, before anything is written this frame.
+  for (const r of rails) r.top = r.el.getBoundingClientRect().top;
+
+  // WRITE PASS — nothing below reads layout.
+  const span = rest - bar;
+  for (const r of rails) {
+    const t = Math.min(Math.max((r.top - bar) / span, 0), 1);
+    // Smoothstepped, so the fade eases out of its own limits instead of
+    // ramping linearly into full opacity at the moment the rail parks.
+    const value = t * t * (3 - 2 * t);
+
+    // Mapped straight from position, with no damping.
+    //
+    // A damped chase was the first version and it was wrong in the one case
+    // that matters. The requirement is absolute — the rail must be gone BEFORE
+    // it touches the bar — and a filter that lags by a few frames breaks
+    // exactly that on a fast flick, which is when a rail crosses its whole
+    // clearance in less time than the filter needs to settle. It showed up on
+    // the Deconstruction rail, which is released by a pin and so moves faster
+    // than any of the others.
+    //
+    // Nothing is lost by dropping it: the input is scroll position, Lenis has
+    // already eased that, so the output is continuous without any help here.
+    if (r.shown !== value) {
+      r.shown = value;
+      r.el.style.opacity = String(value);
+      // A rail faded to nothing must not still be catching the pointer.
+      r.el.style.pointerEvents = value < RAIL.hidden ? 'none' : '';
+    }
+  }
+}
+
+/**
  * Fades a label rail out as it comes up on the fixed top bar.
  *
  * The bar is painted with mix-blend-difference, so a rail that scrolls under it
@@ -183,51 +247,35 @@ function resolveLength(token: string): number {
  * the rect it reads is the one about to be painted rather than last frame's.
  */
 export function useRailFade(ref: React.RefObject<HTMLElement | null>) {
-  const shown = useRef(1);
-  const geom = useRef({ rest: 0, bar: 0 });
-
   useEffect(() => {
-    const measure = () => {
-      const bar = document.querySelector<HTMLElement>('[data-topbar]');
-      if (!bar) return;
-      const barH = bar.getBoundingClientRect().height;
-      geom.current = { bar: barH, rest: barH + resolveLength('var(--nav-clear)') };
-    };
-    measure();
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
-  }, [ref]);
-
-  useTicker(() => {
     const el = ref.current;
-    const { rest, bar } = geom.current;
-    if (!el || rest <= bar) return;
+    if (!el) return;
 
-    const top = el.getBoundingClientRect().top;
-    const t = Math.min(Math.max((top - bar) / (rest - bar), 0), 1);
-    // Smoothstepped, so the fade eases out of its own limits instead of ramping
-    // linearly into full opacity at the moment the rail parks.
-    const value = t * t * (3 - 2 * t);
+    const entry: Rail = { el, shown: 1, top: 0 };
+    rails.add(entry);
 
-    // Mapped straight from position, with no damping.
-    //
-    // A damped chase was the first version and it was wrong in the one case
-    // that matters. The requirement is absolute — the rail must be gone BEFORE
-    // it touches the bar — and a filter that lags by a few frames breaks
-    // exactly that on a fast flick, which is when a rail crosses its whole
-    // clearance in less time than the filter needs to settle. It showed up on
-    // the Deconstruction rail, which is released by a pin and so moves faster
-    // than any of the others.
-    //
-    // Nothing is lost by dropping it: the input is scroll position, Lenis has
-    // already eased that, so the output is continuous without any help here.
-    if (shown.current !== value) {
-      shown.current = value;
-      el.style.opacity = String(value);
-      // A rail faded to nothing must not still be catching the pointer.
-      el.style.pointerEvents = value < RAIL.hidden ? 'none' : '';
+    // The shared step and the resize listener are owned by the group, not by
+    // any one rail: started when the first rail mounts, torn down when the
+    // last one leaves. Interior routes mount and unmount rails on navigation,
+    // so "the last one" really does happen.
+    if (rails.size === 1) {
+      measureRailGeom();
+      window.addEventListener('resize', measureRailGeom);
+      const unstep = addStep(railStep);
+      railDetach = () => {
+        unstep();
+        window.removeEventListener('resize', measureRailGeom);
+      };
     }
-  });
+
+    return () => {
+      rails.delete(entry);
+      if (rails.size === 0 && railDetach) {
+        railDetach();
+        railDetach = null;
+      }
+    };
+  }, [ref]);
 }
 
 /**

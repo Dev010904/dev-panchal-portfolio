@@ -92,6 +92,13 @@ export function Cursor() {
     // and dirties the element, and this runs 60+ times a second forever.
     let wroteFilled = -1;
     let wroteVisible = -1;
+    // Ring transform components, at written precision; dot position, raw.
+    let wroteRingX = NaN;
+    let wroteRingY = NaN;
+    let wroteScale = NaN;
+    let wroteDotX = NaN;
+    let wroteDotY = NaN;
+    let wroteDotFilled = -1;
 
     const step = (dtRaw: number) => {
       const dt = Math.min(dtRaw, 0.05);
@@ -136,10 +143,22 @@ export function Cursor() {
         // Rounded to whole device pixels via `| 0` on a pre-scaled value rather
         // than toFixed(): toFixed allocates a string per call, three per frame,
         // ~180 strings a second for digits nobody can see.
-        ring.current.style.transform =
-          'translate3d(' + Math.round(r.x * 100) / 100 + 'px,' +
-          Math.round(r.y * 100) / 100 + 'px,0) translate(-50%,-50%) scale(' +
-          Math.round(scale * 1000) / 1000 + ')';
+        //
+        // Then compared before writing. The ring is exponentially damped, so at
+        // rest it approaches the pointer without ever reaching it and these three
+        // numbers keep changing forever in decimal places that round away — the
+        // string is identical and the write is pure waste. Guarding on the
+        // rounded components is what makes a stationary cursor actually idle.
+        const rx = Math.round(r.x * 100) / 100;
+        const ry = Math.round(r.y * 100) / 100;
+        const rs = Math.round(scale * 1000) / 1000;
+        if (rx !== wroteRingX || ry !== wroteRingY || rs !== wroteScale) {
+          wroteRingX = rx;
+          wroteRingY = ry;
+          wroteScale = rs;
+          ring.current.style.transform =
+            'translate3d(' + rx + 'px,' + ry + 'px,0) translate(-50%,-50%) scale(' + rs + ')';
+        }
         if (filled !== wroteFilled) {
           // Pure white, so the difference blend resolves to a clean inversion
           // of whatever is behind it rather than a tinted one.
@@ -147,11 +166,21 @@ export function Cursor() {
         }
       }
 
-      // ── Dot: exact. No damping, no rounding, no conditions. ───────────────
+      // ── Dot: exact. No damping, no rounding. ──────────────────────────────
+      // The guard compares the RAW pointer coordinates, not a rounded copy, so
+      // the dot keeps its defining property — it is drawn at the exact pointer
+      // position, 0px of error at every speed. A frame where the pointer has
+      // not moved would paint a byte-identical string, and that is the only
+      // frame this skips.
       if (dot.current) {
-        dot.current.style.transform =
-          'translate3d(' + px + 'px,' + py + 'px,0) translate(-50%,-50%) scale(' +
-          (filled ? 0 : 1) + ')';
+        if (px !== wroteDotX || py !== wroteDotY || filled !== wroteDotFilled) {
+          wroteDotX = px;
+          wroteDotY = py;
+          wroteDotFilled = filled;
+          dot.current.style.transform =
+            'translate3d(' + px + 'px,' + py + 'px,0) translate(-50%,-50%) scale(' +
+            (filled ? 0 : 1) + ')';
+        }
       }
 
       if (filled !== wroteFilled) wroteFilled = filled;

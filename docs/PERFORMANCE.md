@@ -586,3 +586,126 @@ A second trap on top of it: the dev console buffer replayed those errors long
 after the source was fixed, including one naming a symbol that no longer existed
 anywhere in the tree. Stale console output claiming a fixed bug is still broken
 will cost time if believed. Verify against a freshly loaded document.
+
+---
+
+## §3 verified and landed — 2026-08-13
+
+The smoothness work had been written, typechecked and left uncommitted because
+the browser dropped before it could be verified. Verified in Edge
+(`Edg/151.0.0.0`, ANGLE D3D11, Intel Iris Xe, DPR 1, dev build) and landed.
+
+### Before / after
+
+Same instrument, same machine, same session. `profile(150)` at each position,
+**two** profiles discarded first rather than one — the first post-warm run
+still reads high (one returned p95 15.5 against 11.5–12.1 for the four runs
+after it), and treating that as the measurement would have reported a
+regression that does not exist. Median of three runs.
+
+| Position | p50 before | p50 after | p95 before | p95 after | >16.7ms before | after |
+|---|---|---|---|---|---|---|
+| hero | 9.7 | **6.9** | 14.9 | **11.8** | 3/150 | 3/150 |
+| deconstruction | 9.5 | **7.3** | 18.7 | **12.4** | 11/150 | **2/150** |
+| lab | 7.3 | **6.1** | 12.6 | **12.1** | 2/150 | 3/150 |
+| work | 7.7 | **6.6** | 14.3 | **11.8** | 5/150 | **2/150** |
+| footer | 7.6 | **6.7** | 13.1 | **12.1** | 4/150 | **2/150** |
+
+Deconstruction was the target and it moved furthest: **p95 −34%, and
+over-budget frames from 11 in 150 to 2.** That is the predicted result — its
+p95 was where the forced layout lived.
+
+### The baseline's "deconstruction" row was not measuring the annotations
+
+Worth recording, because it nearly produced a false claim. Scroll fraction
+0.28 — the position the baseline table calls "deconstruction" — has **every
+annotation at alpha 0**. The annotations are only on between roughly f=0.16
+and f=0.19. So the headline improvement at 0.28 is the rail batching and the
+new early-out, not the width cache.
+
+The annotation path proper was therefore measured separately, at f=0.175 with
+four cards genuinely at partial alpha (0.878 / 0.596 / 0.315 / 0.034):
+
+| Position | p50 | p95 | >16.7ms | draws | tris |
+|---|---|---|---|---|---|
+| deconstruction, annotations ON | 7.7 | 13.8 | 3/150 | 85 | 39,835 |
+
+There is no "before" for that row — it is not in any earlier table — so the
+fix was A/B'd directly against the pattern it replaced instead, timed over 200
+iterations on the live nodes:
+
+| Pattern | ms/frame |
+|---|---|
+| write opacity → **read `offsetWidth`** → write transform, ×6 nodes | **0.255** |
+| same writes, width from cache | **0.014** |
+| 7 rails: read rect → write opacity, interleaved | **0.117** |
+| same rails: read all, then write all | **0.051** |
+
+18× on the annotations. Small in absolute milliseconds — but forced layout is
+tail cost, not mean cost, which is exactly why p95 moved three times as far as
+p50 everywhere.
+
+### `steps` dropped 12 → 6, and that is the fix working
+
+`__qa.snapshot().steps` read **12** at the last verification and reads **6**
+now. That is not the registry coming loose — it is the seven per-rail ticker
+callbacks collapsing into one shared `railStep`. A drop here is only alarming
+if it goes to zero.
+
+### The rail invariant, checked rather than assumed
+
+The rails were the riskiest part of §3: the per-rail loops became one shared
+loop with module-level state, and the geometry is now measured once for the
+group instead of once per rail. The requirement is absolute — a rail must be
+invisible **before** its top reaches the bottom of the bar, because the bar is
+`mix-blend-difference` and two lines of the same monospace land on each other.
+
+Swept 200 scroll positions across the whole page against all three home-page
+rails: **zero violations.** No rail is ever above 0.02 opacity once its top is
+at or below the bar.
+
+### Also landed: the last three per-frame allocations
+
+The §3 audit turned up three the original pass had missed.
+
+- **`Chrome.tsx`, the scroll progress bar.** Built `scaleY(${float})` and wrote
+  it every frame for the entire life of the page, unquantised. Same defect as
+  the marquee skew and it had survived that fix. Now snaps its tail, quantises
+  to 1e-3 and writes on change — and it settles on exact values (`scaleY(0.5)`
+  at 50%, not `scaleY(0.4999987)`), which is the observable proof the write is
+  actually being elided.
+- **`WorkScene.tsx`, the hover raycast.** `meshes.current.filter(Boolean)`
+  allocated an array per frame and `intersectObjects` allocated another. Both
+  now reuse scratch arrays; `intersectObjects` already took an optional target.
+- **`Cursor.tsx`, the ring and dot transforms.** Written unconditionally every
+  frame. The ring is damped so it never arrives and its rounded components
+  changed forever; the dot's string was byte-identical whenever the pointer had
+  not moved. Both guarded now — **the dot's guard compares the raw pointer
+  coordinates**, never a rounded copy, so its defining property survives:
+  `cursorLag()` still reports `dotWorstGapPx: 0` at every speed, and the ring
+  still reads 19.3 steady / 21.1 worst against its 26px ceiling, matching the
+  recorded table exactly.
+
+At rest the whole page now produces **0.5 style-attribute mutations per frame**,
+measured with a `MutationObserver` over 120 stepped frames.
+
+### Fixed-alpha damping: none left
+
+Swept every `+= (target - current) * k` and every `.lerp(` on the tree. All of
+them resolve `k` through `1 - Math.exp(-rate · dt)`. The three that needed
+checking by hand rather than by pattern — `lens.ts`, `Cursor.tsx`'s
+speed-adaptive ring rate, and `CameraRig`'s orbit — are all exponential.
+
+### Draw calls: the earlier 81 was the preloader, not a change
+
+Hero read 81 draws while `entered` was still false and **87** once the
+preloader had actually left. 87/45,543 at hero and 72/7,137 in the Lab both
+match the figures on record, so the §6 HUD targets stand unchanged.
+
+### X3595: still zero, and the absence is still meaningful
+
+Fresh document, 40 programs linked after visiting every scroll position. Seven
+console messages, all of them the React DevTools INFO line — so the reader was
+live on this exact load. Both preconditions re-confirmed before believing the
+absence: `ANGLE (Intel, Intel(R) Iris(R) Xe Graphics, Direct3D11 vs_5_0 ps_5_0,
+D3D11)` and `gl.debug.checkShaderErrors = true`.

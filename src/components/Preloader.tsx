@@ -38,6 +38,7 @@ export function Preloader() {
   const setEntered = useScene((s) => s.setEntered);
 
   const displayed = useRef(0);
+  const shownPct = useRef(-1);
   const mountedAt = useRef(0);
   const done = useRef(false);
 
@@ -64,11 +65,18 @@ export function Preloader() {
     if (!shown) return;
 
     const target = useScene.getState().progress;
-    displayed.current += (target - displayed.current) * PRELOADER.counterLerp;
+    displayed.current +=
+      (target - displayed.current) * (1 - Math.exp(-PRELOADER.counterRate * delta));
 
+    // Only touched when the rendered digits actually change. The counter is
+    // three characters, so it changes at most 100 times across the whole
+    // preload no matter how many frames that takes.
     const pct = Math.min(Math.round(displayed.current * 100), 100);
-    if (counter.current) counter.current.textContent = String(pct).padStart(3, '0');
-    if (bar.current) bar.current.style.transform = `scaleX(${displayed.current})`;
+    if (pct !== shownPct.current) {
+      shownPct.current = pct;
+      if (counter.current) counter.current.textContent = String(pct).padStart(3, '0');
+      if (bar.current) bar.current.style.transform = `scaleX(${displayed.current})`;
+    }
 
     // ── Name resolve out of glyph noise ───────────────────────────────────
     const el = nameRef.current;

@@ -122,6 +122,47 @@ export function Deconstruction() {
   // ── Leader lines + annotations ──────────────────────────────────────────
   // These follow projected 3D anchors, so they are updated in a rAF loop
   // reading a module array rather than through React state.
+  //
+  // GEOMETRY IS CACHED, NOT MEASURED PER FRAME.
+  //
+  // This loop used to read `node.offsetWidth` in the middle of its own run of
+  // style writes. That is a forced synchronous layout, once per annotation per
+  // frame, and it ran on every frame of the page's life rather than only while
+  // the annotations were on screen. It was the most expensive thing in the
+  // Deconstruction section by a distance — p95 there was 18.7ms against 12-14
+  // everywhere else, with 11 frames in 150 over budget.
+  //
+  // The width of an annotation card only changes when the text reflows, which
+  // means on resize. So it is measured on resize, into a preallocated array,
+  // and the frame loop only ever reads that array. Nothing in here touches
+  // layout now — every remaining DOM operation is a write.
+  const widths = useRef<number[]>([]);
+  /**
+   * Seeded to -1 rather than left empty, which matters: `[].every()` is `true`,
+   * so an empty array would satisfy the all-hidden early-out on the very first
+   * frame and the annotations would never receive their initial opacity at all.
+   */
+  const wroteAlpha = useRef<number[]>(ANNOTATIONS.map(() => -1));
+  const wrotePct = useRef(-1);
+
+  useEffect(() => {
+    const measure = () => {
+      const w = widths.current;
+      // All reads, in one pass, before anything is written. There are no
+      // writes in this function at all, so this cannot force a second layout.
+      for (let i = 0; i < ANNOTATIONS.length; i++) {
+        const node = annoRefs.current[i];
+        w[i] = node ? node.offsetWidth || 220 : 220;
+      }
+    };
+    measure();
+
+    // Fonts land after first paint and change the card width when they do.
+    document.fonts?.ready.then(measure).catch(() => {});
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, []);
+
   useTicker(
     () => {
       const p = markHandles.current.progress.value;
@@ -130,9 +171,22 @@ export function Deconstruction() {
       const inWindow =
         p >= K.annotate.at - 0.02 && p <= K.wireframe.at + K.wireframe.dur * 0.5;
 
-      if (readout.current) {
-        readout.current.textContent = `${String(Math.round(p * 100)).padStart(3, '0')}`;
+      const pct = Math.round(p * 100);
+      if (readout.current && pct !== wrotePct.current) {
+        wrotePct.current = pct;
+        readout.current.textContent = String(pct).padStart(3, '0');
       }
+
+      // Outside the window every annotation is at alpha 0 and pinned there.
+      // Once they have all been written to 0 once, there is nothing left to
+      // say, so the whole loop — and every string it would have built — is
+      // skipped for the rest of the page.
+      if (!inWindow && wroteAlpha.current.every((a) => a === 0)) return;
+
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const offXMag = Math.min(vw * 0.19, 240);
+      const margin = 24;
 
       for (let i = 0; i < ANNOTATIONS.length; i++) {
         const node = annoRefs.current[i];
@@ -148,29 +202,38 @@ export function Deconstruction() {
         );
         const alpha = inWindow && screen.visible ? local : 0;
 
-        node.style.opacity = String(alpha);
+        const quantAlpha = Math.round(alpha * 1000) / 1000;
+        if (quantAlpha !== wroteAlpha.current[i]) {
+          wroteAlpha.current[i] = quantAlpha;
+          node.style.opacity = String(quantAlpha);
+          if (line) line.style.opacity = String(quantAlpha * 0.7);
+        }
+
+        // A fully transparent card still needs its cached alpha recorded above
+        // so the early-out can fire, but nothing else about it is observable.
+        if (quantAlpha === 0) continue;
 
         // Annotation card sits out to the side; the leader line bridges the
         // gap back to the part. Offsetting on X only keeps the labels on a
         // tidy column instead of scattering with the geometry.
         const side = ANNOTATIONS[i].side === 'left' ? -1 : 1;
-        const offX = side * Math.min(window.innerWidth * 0.19, 240);
+        const offX = side * offXMag;
 
         // Clamp into the viewport. Parts travel a long way during the explode,
         // and an annotation that follows one off the edge of the screen is
         // both unreadable and a horizontal-overflow bug waiting to happen. The
         // leader line is what preserves the association, so the label is free
         // to sit still while the part keeps moving.
-        const margin = 24;
-        const width = node.offsetWidth || 220;
+        const width = widths.current[i] || 220;
         const min = side === -1 ? margin + width : margin;
-        const max = side === -1 ? window.innerWidth - margin : window.innerWidth - margin - width;
+        const max = side === -1 ? vw - margin : vw - margin - width;
 
         const nx = Math.min(Math.max(screen.x + offX, min), Math.max(min, max));
-        const ny = Math.min(Math.max(screen.y, 96), window.innerHeight - 96);
-        node.style.transform = `translate3d(${nx}px, ${ny}px, 0) translate(${
-          side === -1 ? '-100%' : '0'
-        }, -50%)`;
+        const ny = Math.min(Math.max(screen.y, 96), vh - 96);
+        node.style.transform =
+          side === -1
+            ? `translate3d(${nx}px, ${ny}px, 0) translate(-100%, -50%)`
+            : `translate3d(${nx}px, ${ny}px, 0) translate(0, -50%)`;
 
         if (line) {
           line.setAttribute('x1', String(screen.x));
@@ -178,7 +241,6 @@ export function Deconstruction() {
           // Draw the line out as the annotation resolves.
           line.setAttribute('x2', String(screen.x + (nx - screen.x) * local));
           line.setAttribute('y2', String(ny));
-          line.style.opacity = String(alpha * 0.7);
         }
       }
     },

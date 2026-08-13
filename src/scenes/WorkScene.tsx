@@ -243,6 +243,16 @@ function Driver({
   const raycaster = useMemo(() => new THREE.Raycaster(), []);
   const ndc = useMemo(() => new THREE.Vector2(), []);
 
+  /**
+   * Scratch for the hit test below. Both of these used to be allocated fresh
+   * every frame — `filter(Boolean)` builds an array, and `intersectObjects`
+   * builds another unless it is handed one to fill. Four cards is not much
+   * garbage, but it is garbage produced 60 times a second for the whole time
+   * the Work section is on screen, and the API already supports not making it.
+   */
+  const castTargets = useMemo<THREE.Mesh[]>(() => [], []);
+  const castHits = useMemo<THREE.Intersection[]>(() => [], []);
+
   useFrame((_, delta) => {
     const s = sceneState();
     const dt = Math.min(delta, 0.05);
@@ -294,9 +304,12 @@ function Driver({
     if (!s.isMobile && s.activeSection === 'WORK') {
       ndc.set(s.pointer[0], s.pointer[1]);
       raycaster.setFromCamera(ndc, camera);
-      const list = meshes.current.filter(Boolean);
-      const hits = raycaster.intersectObjects(list, false);
-      if (hits.length) hit = list.indexOf(hits[0].object as THREE.Mesh);
+      // Refill the scratch arrays in place rather than allocating two new ones.
+      castTargets.length = 0;
+      for (const m of meshes.current) if (m) castTargets.push(m);
+      castHits.length = 0;
+      raycaster.intersectObjects(castTargets, false, castHits);
+      if (castHits.length) hit = castTargets.indexOf(castHits[0].object as THREE.Mesh);
     }
 
     if (hit !== workHandle.hover) {

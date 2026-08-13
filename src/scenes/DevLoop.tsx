@@ -1,6 +1,6 @@
 'use client';
 
-import { useFrame, useThree } from '@react-three/fiber';
+import { useFrame, useStore, useThree } from '@react-three/fiber';
 import { useEffect, useRef } from 'react';
 
 import { cursorDebug } from '@/components/Cursor';
@@ -34,6 +34,7 @@ import { useScene } from '@/store/scene';
 type OrderRow = { who: 0 | 1; t: number; scroll: number };
 
 export function DevLoop() {
+  const store = useStore();
   const advance = useThree((s) => s.advance);
   const clock = useThree((s) => s.clock);
   const gl = useThree((s) => s.gl);
@@ -603,6 +604,32 @@ export function DevLoop() {
       steps: stepCount(),
     });
 
+    /**
+     * The adaptive-resolution state, which is otherwise unobservable.
+     *
+     * `performance.current` is the multiplier `AdaptiveDpr` applies to the dpr
+     * ceiling. It sits at `max` (1) on a machine that is keeping up. If it never
+     * moves while the frame time is plainly over budget, `PerformanceMonitor`
+     * is not wired in and AdaptiveDpr is decorative — which is exactly what was
+     * true here until §3.
+     *
+     * Read this DURING sustained load, not after: `regress()` is debounced and
+     * `current` climbs back to max once the pressure stops.
+     */
+    const perf = () => {
+      const s = store.getState();
+      return {
+        current: s.performance.current,
+        min: s.performance.min,
+        max: s.performance.max,
+        debounce: s.performance.debounce,
+        /** What the renderer is actually rasterising at, right now. */
+        pixelRatio: Number(gl.getPixelRatio().toFixed(3)),
+        devicePixelRatio: window.devicePixelRatio,
+        drawingBuffer: [gl.domElement.width, gl.domElement.height],
+      };
+    };
+
     /** Move the virtual pointer without a real mouse. */
     const pointer = (x: number, y: number) => {
       window.dispatchEvent(
@@ -680,6 +707,7 @@ export function DevLoop() {
       reducedMotion,
       state,
       blast,
+      perf,
       cursorLag,
       loopOrder,
       loopOrderSelfTest,
@@ -698,7 +726,7 @@ export function DevLoop() {
     return () => {
       delete (window as unknown as { __qa?: unknown }).__qa;
     };
-  }, [advance, clock, gl, scene, camera]);
+  }, [advance, clock, gl, scene, camera, store]);
 
   return null;
 }

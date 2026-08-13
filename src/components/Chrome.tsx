@@ -357,10 +357,27 @@ function ScrollProgress() {
   // Written straight to the style rather than through React: this changes on
   // every scroll frame and a state update per frame would re-render the tree.
   const shown = useRef(0);
+  /** Last value actually written, at the precision it was written. */
+  const wroteBar = useRef(-1);
   useTicker((delta) => {
     const p = useScene.getState().scrollProgress;
     shown.current += (p - shown.current) * (1 - Math.exp(-14 * delta));
-    if (bar.current) bar.current.style.transform = `scaleY(${shown.current})`;
+
+    // Settle the tail. An exponential chase never arrives, so left alone this
+    // keeps changing in the last decimal place for the entire life of the page
+    // and the write below could never be elided — the same defect that left the
+    // marquee sitting at `skewX(-1.8639e-74deg)`. Snapping once the remaining
+    // error is far below one bar-pixel makes it actually stop.
+    if (Math.abs(p - shown.current) < 1e-4) shown.current = p;
+
+    // Quantised to the precision that can move a pixel on a full-height bar,
+    // then written only on change. At rest this costs one float compare a frame
+    // instead of a template literal and a CSSOM write.
+    const next = Math.round(shown.current * 1000) / 1000;
+    if (next !== wroteBar.current) {
+      wroteBar.current = next;
+      if (bar.current) bar.current.style.transform = `scaleY(${next})`;
+    }
   });
 
   // Crossfade the section name rather than swapping it — a hard swap on a
