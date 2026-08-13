@@ -196,6 +196,37 @@ the mistake the `gl.info` bug already taught.
 
 ## Known measurement hazards in this environment
 
+These cost a session's worth of confusion each and will do it again.
+
+**0. `snapshot()` is only meaningful immediately after `tick()`.**
+Found 2026-08-13, verifying the X3595 commit. `gl.info.autoReset = false` is set
+once at harness install, but `gl.info.reset()` is called **only inside `tick()`
+and `profile()`** — the forced-frame paths. Nothing resets it on a real rAF
+frame. So on a page that has simply been sitting there rendering, the counters
+accumulate across every frame since load, and a bare `__qa.snapshot()` returns
+their running total:
+
+```
+drawCalls: 13092, triangles: 6970312    ← bare snapshot(), ~150 frames of drift
+drawCalls: 87,    triangles: 45543      ← the same frame, after tick(1/60, 1)
+```
+
+The tell is that **both counters are wrong by the same factor** (13092/87 = 150.5,
+6970312/45543 = 153.0). Real geometry changes do not scale two independent
+counters by one constant; accumulation does. If a snapshot looks impossibly
+heavy, check the ratio against a known-good row in the tables above before
+believing the page got slower.
+
+This is not the `gl.info` bug returning — the fix for that was correct and is
+intact. It is a usage constraint the fix created and nobody wrote down. **Always
+`tick()` first, or read the value `tick()` returns, which is a snapshot taken at
+the right moment.**
+
+Consequence for the telemetry HUD (§7): a HUD that reads `gl.info` on real
+frames cannot rely on the harness, and must own a reset-per-frame of its own.
+
+---
+
 Both of these cost a session's worth of confusion on 2026-08-10 and will do it
 again.
 
@@ -336,6 +367,60 @@ orderings, with a known one-frame lag injected in the second. It must report
 run and passed before the real probe was trusted** — the step `scrollLag` skipped.
 
 ---
+
+## Verification pass — 2026-08-13, the four frame-loop / lens commits
+
+`3aa129d`, `ed85d8a`, `220e597`, `f355a87` had landed but had never been
+eyes-verified, because the browser dropped in the session that wrote them. They
+were already on `origin/main` — `git ls-remote` was checked against the cached
+`origin/main` ref, since a stale ref is exactly how the previous session talked
+itself into destroying an untracked file.
+
+### The browser, finally identified
+
+The earlier note that the connected browser "reported `Chrome/151.0.0.0` with no
+`Edg/` token" was an artefact of reading only one token. The full string carries
+both:
+
+```
+Edg/151.0.0.0 · Chrome/151.0.0.0
+ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x0000A7A1) Direct3D11 vs_5_0 ps_5_0, D3D11)
+WebGL 2.0 · GLSL ES 3.00 · three r171 · gl.debug.checkShaderErrors = true
+```
+
+**It is Edge, and it is on ANGLE's D3D11 path.** That matters for the X3595
+result below: X3595 is an FXC HLSL warning, so it is only emitted on this
+backend. A zero-warning result on a Vulkan or desktop-GL backend would have been
+vacuous. Both preconditions for detecting it — D3D11 translation and
+`checkShaderErrors` — were confirmed live before the absence was accepted as
+evidence.
+
+### Results
+
+| Check | Result |
+|---|---|
+| `__qa.snapshot().steps` non-zero | **12** — registry connected |
+| Zero `X3595` on a fresh document | **zero warnings of any kind** |
+| Lens tracks the cursor with the X-ray view | **confirmed visually** |
+| Marquee scrolls and skews with scroll velocity | **confirmed numerically** |
+
+The console reader was proved live on the same document before the absence of
+X3595 was believed — it captured the React DevTools INFO lines from that exact
+load, so "no matches" meant no warnings rather than no connection. That check is
+the whole difference between this result and the `gl.info` era.
+
+Marquee, sampled through `tick()` at its own scroll position:
+
+```
+at rest      offsets  -565.5 → -554.6   (base drift ~2.8px/frame, never stops)
+under scroll offsets  -510.5 → -25.8    (~44px/frame)
+             skewX      0.47° → 5.86°   (rises with velocity)
+```
+
+One thing the sample exposed rather than proved: at rest the band reported
+`skewX(-1.8639e-74deg)`. A fixed-alpha lerp toward zero decays into denormals
+and never arrives. Harmless in itself, and a direct symptom of the
+frame-rate-dependent relax fixed in §3.
 
 ## §3.8 — lightning arming boundary, verified empirically
 
