@@ -49,6 +49,15 @@ interface SceneStore {
   /** Scene is paused when the tab is hidden — no reason to burn a GPU. */
   visible: boolean;
 
+  /**
+   * How many points the Lab field is actually running, resolved from the tier
+   * ladder at boot. The section header prints this, so it must be the live
+   * number rather than a constant — it read "46K POINTS · GPU" while the GPU
+   * path was running 350,464, which is the kind of caption that quietly makes
+   * every other claim on the page suspect. Written once at mount.
+   */
+  labCount: number;
+
   setProgress: (p: number) => void;
   setReady: (v: boolean) => void;
   setEntered: (v: boolean) => void;
@@ -64,6 +73,7 @@ interface SceneStore {
   setWorkIndex: (v: number) => void;
   setStructure: (v: 'lattice' | 'stack' | 'helix' | 'archive' | null) => void;
   setFooterNear: (v: boolean) => void;
+  setLabCount: (n: number) => void;
   setEnv: (v: { reducedMotion?: boolean; isMobile?: boolean; visible?: boolean }) => void;
 }
 
@@ -92,6 +102,7 @@ export const useScene = create<SceneStore>((set) => ({
   reducedMotion: false,
   isMobile: false,
   visible: true,
+  labCount: 0,
 
   setProgress: (progress) => set({ progress }),
   setReady: (ready) => set({ ready }),
@@ -108,6 +119,7 @@ export const useScene = create<SceneStore>((set) => ({
   setWorkIndex: (workIndex) => set({ workIndex }),
   setStructure: (structure) => set({ structure }),
   setFooterNear: (footerNear) => set({ footerNear }),
+  setLabCount: (labCount) => set({ labCount }),
   setEnv: (v) => set(v),
 }));
 

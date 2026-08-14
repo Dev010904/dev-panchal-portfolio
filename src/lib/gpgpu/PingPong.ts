@@ -212,7 +212,24 @@ export interface Capability {
   renderer: string;
 }
 
+/**
+ * Cached per renderer. Two callers need this answer — the call site, to decide
+ * which of the two fields mounts, and the field itself, to size its buffers —
+ * and they must not be able to disagree. Caching also keeps the answer stable
+ * across React re-renders and Strict Mode double-invocation, which a fresh
+ * `getExtension` probe is not obliged to be.
+ */
+const capCache = new WeakMap<THREE.WebGLRenderer, Capability>();
+
 export function probeCapability(renderer: THREE.WebGLRenderer): Capability {
+  const cached = capCache.get(renderer);
+  if (cached) return cached;
+  const result = runProbe(renderer);
+  capCache.set(renderer, result);
+  return result;
+}
+
+function runProbe(renderer: THREE.WebGLRenderer): Capability {
   const gl = renderer.getContext();
 
   // Hard gate. No float colour attachment, no simulation.

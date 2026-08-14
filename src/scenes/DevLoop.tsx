@@ -6,7 +6,7 @@ import { useEffect, useRef } from 'react';
 import { cursorDebug } from '@/components/Cursor';
 import { preloaderDebug } from '@/components/Preloader';
 import { getLenis } from '@/components/SmoothScroll';
-import { SWEEP } from '@/config/animation';
+import { LAB_GPU, SWEEP } from '@/config/animation';
 import { gsap, ScrollTrigger } from '@/lib/gsap';
 import { runSteps, stepCount } from '@/lib/steps';
 import { blastHandle, glassHandle, gpuFieldHandle, volumetricHandle } from '@/scenes/handles';
@@ -109,9 +109,21 @@ export function DevLoop() {
         // every time-based animation freezes with no other symptom.
         clock.running = true;
         clock.oldTime = performance.now() - dt * 1000;
-        // Reset BEFORE the frame, never after: resetting after would zero the
-        // very totals the caller is about to read.
-        gl.info.reset();
+        /**
+         * NO `gl.info.reset()` HERE ANY MORE — `<Telemetry />` owns it.
+         *
+         * It resets from a `useFrame` at priority -1000, which `advance()`
+         * dispatches before every other subscriber and before the render, so
+         * the guarantee this line used to provide still holds exactly:
+         * `snapshot()` after `advance()` reads one frame's true totals.
+         *
+         * Resetting here as well was actively wrong once the HUD existed. The
+         * HUD reads the counters at the top of a frame — that is the only
+         * moment they hold a completed frame — so a reset immediately before
+         * `advance()` zeroed them a few microseconds before it read, and every
+         * screenshot taken through the harness showed DRAWS 0. An instrument
+         * that reads zero whenever it is being observed is worse than none.
+         */
         advance(stamp);
       }
       return snapshot();
@@ -138,7 +150,7 @@ export function DevLoop() {
         runSteps(1 / 60, mark);
         clock.running = true;
         clock.oldTime = performance.now() - 1000 / 60;
-        gl.info.reset();
+        // Reset is `<Telemetry />`'s, dispatched first inside advance(). See tick().
         advance(mark);
         times[i] = performance.now() - t0;
       }
@@ -607,9 +619,16 @@ export function DevLoop() {
      * position, forever. Any performance figure quoted from this harness before
      * now is worthless. See docs/PERFORMANCE.md.
      *
-     * `autoReset = false` makes the counters accumulate; DevLoop resets them
-     * once per frame, before the frame is drawn, so what is read afterwards is
-     * one frame's true total across every pass.
+     * `autoReset = false` makes the counters accumulate; something must then
+     * reset them exactly once per frame, before the frame is drawn, so what is
+     * read afterwards is one frame's true total across every pass.
+     *
+     * BOTH HALVES NOW LIVE IN `scenes/Telemetry.tsx`, which ships — the HUD
+     * needs them on real frames and not only on forced ones, and two owners of
+     * one global flag is how this bug came back the first time. The line is
+     * kept here as a no-op-if-already-false safety net for the case where the
+     * harness is driving a page whose Telemetry has not mounted yet; it is
+     * idempotent and cannot fight, because it only ever sets the same value.
      */
     gl.info.autoReset = false;
 
@@ -758,6 +777,32 @@ export function DevLoop() {
       }
       const n = side * side - nan;
       const r = (v: number) => Number(v.toFixed(2));
+
+      /**
+       * Speed percentiles, from the velocity buffer.
+       *
+       * The render pass tints toward the accent by `clamp(speed * uSpeedScale)`,
+       * so if the whole field comes out orange the question is not "is the
+       * colour wrong" but "where does the speed distribution actually sit". A
+       * `uSpeedScale` chosen without this is a guess; chosen with it, p50 lands
+       * mid-ramp and only the genuinely fast particles saturate.
+       */
+      const vrt = gpuFieldHandle.velocityTarget as typeof rt | null;
+      let speed: Record<string, number> | null = null;
+      if (vrt) {
+        const vbuf = new Float32Array(side * side * 4);
+        gl.readRenderTargetPixels(vrt, 0, 0, side, side, vbuf);
+        const mags: number[] = [];
+        for (let i = 0; i < side * side; i++) {
+          const x = vbuf[i * 4], y = vbuf[i * 4 + 1], z = vbuf[i * 4 + 2];
+          if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+          mags.push(Math.hypot(x, y, z));
+        }
+        mags.sort((a, b) => a - b);
+        const pct = (p: number) => Number((mags[Math.min(mags.length - 1, Math.floor(mags.length * p))] ?? 0).toFixed(3));
+        speed = { p05: pct(0.05), p50: pct(0.5), p95: pct(0.95), max: Number((mags[mags.length - 1] ?? 0).toFixed(3)) };
+      }
+
       return {
         sampled: n,
         nonFinite: nan,
@@ -765,9 +810,44 @@ export function DevLoop() {
         extentY: [r(minY), r(maxY)],
         extentZ: [r(minZ), r(maxZ)],
         meanWake: Number((wake / Math.max(n, 1)).toFixed(4)),
+        speed,
         count: gpuFieldHandle.count,
         tier: gpuFieldHandle.tier,
         reason: gpuFieldHandle.reason,
+      };
+    };
+
+    /**
+     * Turn the GPU field's render knobs on a LIVE page.
+     *
+     * `labField()` reads them back; `labField({ exposure: 1.2 })` sets one.
+     * Exposure is expressed relative to the density-normalised baseline, so 1
+     * is "as bright as the 46k CPU field" on every rung of the ladder.
+     *
+     * This exists for the same reason `volumetric()` does: settling the field
+     * into formation takes a few hundred stepped frames, so evaluating a
+     * candidate value by editing config and reloading costs about a minute
+     * each, and the two previous effects that were tuned by guessing both had
+     * to be redone.
+     */
+    const labField = (next?: {
+      exposure?: number;
+      speedScale?: number;
+      pointSize?: number;
+    }) => {
+      const u = gpuFieldHandle.renderUniforms as Record<string, { value: number }> | null;
+      if (!u) return 'no GPU field — either mobile, the CPU fallback, or not mounted';
+      const base = LAB_GPU.referenceCount / Math.max(gpuFieldHandle.count, 1);
+      if (next?.exposure !== undefined) u.uDensityGain.value = base * next.exposure;
+      if (next?.speedScale !== undefined) u.uSpeedScale.value = next.speedScale;
+      if (next?.pointSize !== undefined) u.uPointSize.value = next.pointSize;
+      return {
+        exposure: Number((u.uDensityGain.value / base).toFixed(3)),
+        densityGain: Number(u.uDensityGain.value.toFixed(4)),
+        speedScale: u.uSpeedScale.value,
+        pointSize: u.uPointSize.value,
+        count: gpuFieldHandle.count,
+        tier: gpuFieldHandle.tier,
       };
     };
 
@@ -854,6 +934,7 @@ export function DevLoop() {
       volumetric,
       glass,
       particles,
+      labField,
       shaftLight,
       cursorLag,
       loopOrder,

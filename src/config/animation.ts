@@ -1194,7 +1194,29 @@ export const LAB_GPU = {
 
   /** Render. */
   pointSize: 1.25,
-  speedScale: 0.42,
+  /**
+   * Speed -> ember ramp. DERIVED FROM A MEASUREMENT, not chosen by eye — the
+   * formed field's speed distribution is p05 0.96 / p50 2.28 / p95 3.61, so
+   * this puts the median at heat 0.50 and saturates only the fastest tail.
+   * The previous 0.42 saturated below the median and made the whole field one
+   * flat orange. Re-derive with `__qa.particles().speed` if the flow strength,
+   * stiffness or damping change.
+   */
+  speedScale: 0.22,
+  /**
+   * The particle count the render brightness is authored against — the CPU
+   * field's 46k. `uDensityGain` is this over the live count, which holds total
+   * emitted luminance constant across the whole tier ladder. Changing this
+   * re-exposes the section on every rung at once, which is the point: there is
+   * one exposure control, not one per rung.
+   */
+  referenceCount: 46000,
+  /**
+   * Final exposure trim on top of the density normalisation, set by eye against
+   * the CPU field at the same scroll position. 1.0 means "as bright as 46k
+   * was"; the field is finer-grained at 350k, so it carries slightly more.
+   */
+  exposure: 1.35,
   /** Fade in/out with the section. The k in 1 - exp(-k·dt). */
   fadeRate: 2.6,
 } as const;

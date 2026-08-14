@@ -165,6 +165,56 @@ export const gpuFieldHandle = {
    * from the outside — the only way to tell them apart is to read the numbers.
    */
   positionTarget: null as unknown,
+  /**
+   * Dev only: the live velocity target. The render pass tints by SPEED, so
+   * "why is the whole field the accent colour" is a question about the speed
+   * distribution and cannot be answered from a screenshot — `uSpeedScale` has
+   * to be set against measured speeds or it is a guess that happens to look
+   * fine on one machine.
+   */
+  velocityTarget: null as unknown,
+  /**
+   * Dev only: the live render uniforms, so `__qa.labField({...})` can turn
+   * exposure, the speed ramp and point size on a running page.
+   *
+   * The same reasoning as `__qa.volumetric()`: settling this field takes a few
+   * hundred stepped frames, so a reload per candidate value costs about a
+   * minute each and guessing was demonstrably worse than measuring on the two
+   * previous effects that needed it.
+   */
+  renderUniforms: null as unknown,
+};
+
+/**
+ * THE TELEMETRY HUD's SAMPLE.
+ *
+ * Written once per real frame by `<Telemetry />` inside the Canvas, read once
+ * per frame by the DOM readout. A plain object for the usual reason — this is a
+ * per-frame write and routing it through React would re-render on every frame
+ * to change six characters of text.
+ *
+ * ── WHY THE COUNTERS ARE ONE FRAME OLD ────────────────────────────────────
+ *
+ * `gl.info` has to be reset BEFORE a frame draws and read AFTER it has drawn.
+ * There is no point inside R3F's loop that is after this frame's render and
+ * before the next frame's reset, so the sampler reads the counters at the top
+ * of frame N — which is what frame N-1 actually drew — publishes them, and then
+ * resets. One frame of lag on a readout that updates sixty times a second is
+ * not observable; reading the same frame you reset is, because it reports zero.
+ */
+export const telemetryHandle = {
+  /** Draw calls submitted across every pass of the last completed frame. */
+  drawCalls: 0,
+  triangles: 0,
+  points: 0,
+  /** Linked shader programs. */
+  programs: 0,
+  /** Smoothed wall-clock interval between real frames, ms. */
+  frameMs: 0,
+  /** `WEBGL2` / `WEBGPU` — resolved from the live renderer, never a build flag. */
+  backend: '',
+  /** Bumped every real frame. A HUD that stops moving is a stalled pipeline. */
+  frame: 0,
 };
 
 /** Section wipe progress, 0..1. Driven by GSAP on navigation. */

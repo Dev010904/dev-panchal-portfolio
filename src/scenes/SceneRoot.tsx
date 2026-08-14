@@ -7,14 +7,15 @@ import {
   Preload,
   useProgress,
 } from '@react-three/drei';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 
 import { bootComplete, bootProgress, markBootStep, onBootProgress } from '@/lib/boot';
+import { probeCapability } from '@/lib/gpgpu/PingPong';
 import { pointerHandle } from '@/lib/pointer';
 
-import { CAMERA, DPR, MOBILE, SHOTS } from '@/config/animation';
+import { CAMERA, DPR, LAB, MOBILE, SHOTS } from '@/config/animation';
 import { AnnotationProjector } from './AnnotationProjector';
 import { CameraRig } from './CameraRig';
 import { DevLoop } from './DevLoop';
@@ -26,6 +27,7 @@ import { MarkObject } from './MarkObject';
 import { PageStructures } from './PageStructures';
 import { Stage } from './Stage';
 import { SweepLines } from './SweepLines';
+import { Telemetry } from './Telemetry';
 import { Volumetrics } from './Volumetrics';
 import { WipeOverlay } from './WipeOverlay';
 import { WorkScene } from './WorkScene';
@@ -174,6 +176,11 @@ export function SceneRoot() {
       >
         <ProgressBridge />
         <FrameProbe />
+        {/* Owns gl.info: autoReset off, exactly one reset per real frame. Must
+            stay outside the Suspense boundary — a suspension in there would
+            take the per-frame reset down with it and the counters would start
+            accumulating with nothing to say so. */}
+        <Telemetry />
         {process.env.NODE_ENV !== 'production' && <DevLoop />}
 
         {/* Anything that can suspend (the environment map, project textures)
@@ -192,31 +199,8 @@ export function SceneRoot() {
           {/* Three hairline arcs. Real geometry, so the mark occludes them. */}
           <SweepLines />
           <AnnotationProjector />
-          {/* Two Lab fields, exactly one of which draws.
-              LabFieldGPU probes for float render targets at init and renders
-              nothing if they are unavailable or if this is mobile; LabField is
-              the closed-form 46k CPU path and is the fallback. Deciding here
-              rather than inside one component keeps the fallback a real,
-              already-working code path instead of a branch nobody exercises. */}
-          {/* ── GPGPU FIELD: BUILT, WIRED, AND CURRENTLY OFF ──────────────
-              The simulation runs — positions are finite and the field
-              converges — but it converges to the WRONG target: all 350,464
-              particles collapse into a ~4x1x1.8 unit blob offset in +Z instead
-              of spreading across the "DEV PANCHAL" letterforms, which should
-              be ~11 units wide. Read back with `__qa.particles()`.
-
-              That points at the home-position texture rather than at the
-              physics: `textToPoints` is being asked for 350k points from a
-              1100x260 raster it was written to serve 46k from, and the
-              attractor is faithfully pulling every particle to whatever it
-              returned. Diagnosing that properly needs another pass.
-
-              Until then this stays `enabled={false}` and the CPU field draws
-              exactly as it always has. Shipping the GPU path in this state
-              would replace a working 46k field with an invisible one, which is
-              the one thing this work is not allowed to do. */}
-          <LabFieldGPU enabled={false} />
-          <LabField quality={quality} gpuActive={false} />
+          {/* Two Lab fields, exactly one of which draws. See <LabFields>. */}
+          <LabFields quality={quality} mobile={mobile} />
           <WorkScene quality={quality} />
           <PageStructures quality={quality} />
           <FooterFloor />
@@ -253,6 +237,87 @@ export function SceneRoot() {
         <Preload all />
       </Canvas>
     </div>
+  );
+}
+
+/**
+ * WHICH LAB FIELD DRAWS.
+ *
+ * Exactly one of them, always, and the choice is made in one place from one
+ * probe. `LabFieldGPU` needs a float colour attachment to have anywhere to
+ * write; without `EXT_color_buffer_float` there is no simulation to run and the
+ * honest answer is the closed-form 46k CPU path that was already there. Mobile
+ * takes that route unconditionally — the ladder's lowest rung is 250k points
+ * and two fullscreen float passes a frame, which is not a phone's budget.
+ *
+ * This lives inside the Canvas because the probe needs the renderer, and it is
+ * a component rather than a branch in `SceneRoot` so that `LabField` stays a
+ * live, mounted code path rather than a fallback nobody ever exercises.
+ *
+ * `probeCapability` is cached per renderer, so asking here and asking again
+ * inside `LabFieldGPU` cannot produce two different answers.
+ */
+function LabFields({ quality, mobile }: { quality: 'high' | 'low'; mobile: boolean }) {
+  const gl = useThree((s) => s.gl);
+  const [cap] = useState(() => probeCapability(gl));
+  const setLabCount = useScene((s) => s.setLabCount);
+
+  /**
+   * Dev-only override: `?lab=cpu` or `?lab=gpu`.
+   *
+   * The comment below claims the CPU path stays a live, already-working code
+   * path rather than a branch nobody exercises. That is only true if it can
+   * actually be exercised, and on any machine with float render targets the
+   * GPU branch always wins — so the fallback was unreachable in practice and
+   * the claim was aspirational.
+   *
+   * It also makes the two fields directly comparable at the same scroll
+   * position, which is the only honest way to check that the GPU version is
+   * DENSER than the 46k field without being BRIGHTER than it.
+   *
+   * Read once, in a lazy initialiser, so it cannot change identity mid-session
+   * and remount a field on some unrelated re-render.
+   */
+  const [override] = useState<string | null>(() => {
+    if (process.env.NODE_ENV === 'production' || typeof window === 'undefined') return null;
+    return new URLSearchParams(window.location.search).get('lab');
+  });
+
+  /**
+   * ── THE GPU FIELD IS OFF. THIS IS AN ART-DIRECTION DECISION, NOT A BUG. ──
+   *
+   * The simulation is correct and the render bug that made it invisible is
+   * fixed (see `LabFieldGPU`'s `setDrawRange` note) — it draws all 350,464
+   * points, reads cleanly as the letterforms, and holds the black. It was
+   * looked at on screen, side by side with this path, and the 46k CPU field is
+   * simply the better section: its scatter, its magnetic reform and its
+   * shockwave read as a field you are pushing around, and the denser GPU
+   * version reads as a static sign that happens to have more dots in it.
+   *
+   * That is the same rule that cut the caustics — an effect that reads as a
+   * demo gets cut, however much work is in it.
+   *
+   * The GPU path stays mounted-and-off rather than deleted: it is a working
+   * implementation, it is the thing the WebGPU migration ports, and
+   * `?lab=gpu` in dev renders it for comparison whenever this decision is
+   * revisited. `?lab=cpu` forces this path.
+   */
+  const gpu = override === 'gpu' && cap.tier !== null;
+
+  // The section header prints this. It is written here rather than inside
+  // either field because this is the only place that knows which one won.
+  useEffect(() => {
+    const cpu = mobile
+      ? Math.floor(LAB.count.desktop * MOBILE.particleScale)
+      : LAB.count.desktop;
+    setLabCount(gpu && cap.tier ? cap.tier.count : cpu);
+  }, [gpu, cap.tier, mobile, setLabCount]);
+
+  return (
+    <>
+      <LabFieldGPU enabled={gpu} />
+      <LabField quality={quality} gpuActive={gpu} />
+    </>
   );
 }
 

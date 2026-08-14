@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-import { BLAST, LAB } from '@/config/animation';
+import { BLAST } from '@/config/animation';
 import { gsap, useGsap } from '@/lib/gsap';
 import { useSectionShot } from '@/components/useSectionShot';
 import { CornerMarks, SectionTag, useRailFade } from '@/components/ui/primitives';
@@ -29,6 +29,7 @@ export function Lab() {
 
   const reducedMotion = useScene((s) => s.reducedMotion);
   const active = useScene((s) => s.activeSection === 'LAB');
+  const labCount = useScene((s) => s.labCount);
 
   useGsap(
     () => {
@@ -85,8 +86,10 @@ export function Lab() {
       <div ref={rail} className="grid12 items-start gap-y-4">
         <div className="col-span-12 flex flex-wrap items-baseline justify-between gap-4">
           <SectionTag name="THE LAB" />
+          {/* The live count off the resolved tier, never a constant. This said
+              "46K POINTS · GPU" while the GPU path was running 350,464. */}
           <span className="t-mono text-[var(--color-fg-dim)]">
-            {(LAB.count.desktop / 1000).toFixed(0)}K POINTS · GPU
+            {labCount > 0 ? `${(labCount / 1000).toFixed(0)}K POINTS · GPU` : 'GPU'}
           </span>
         </div>
         <div className="col-span-12 mt-2 h-px bg-[var(--color-rule)]" />

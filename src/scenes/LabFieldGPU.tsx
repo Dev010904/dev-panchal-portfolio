@@ -157,6 +157,32 @@ export function LabFieldGPU({ enabled }: { enabled: boolean }) {
     }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('aRef', new THREE.BufferAttribute(refs, 2));
+
+    /**
+     * ── DO NOT REMOVE THIS LINE. IT IS WHY THE FIELD DRAWS AT ALL. ──────────
+     *
+     * A GPGPU geometry has no `position` attribute by design — every position
+     * comes out of the simulation texture. But `WebGLRenderer.renderBufferDirect`
+     * derives its vertex count from exactly two places and nowhere else:
+     *
+     *     if ( index !== null )              drawEnd = min(drawEnd, index.count)
+     *     else if ( position != null )       drawEnd = min(drawEnd, position.count)
+     *     const drawCount = drawEnd - drawStart;
+     *     if ( drawCount < 0 || drawCount === Infinity ) return;   ← HERE
+     *
+     * With no index and no `position`, neither clamp runs, `drawRange.count`
+     * keeps its default of `Infinity`, and the renderer RETURNS BEFORE
+     * SUBMITTING ANYTHING. No warning, no GL error, no shader message — the
+     * draw call is not even counted in `gl.info`. The field is simply absent.
+     *
+     * That was the actual bug behind "the GPU field is a faint wash": the wash
+     * was the CPU field still drawing underneath. Setting the draw range gives
+     * the renderer the finite count it needs, at a cost of zero bytes — the
+     * alternative, a dummy `position` attribute, is 6MB of zeros at the ultra
+     * rung to communicate one integer.
+     */
+    geometry.setDrawRange(0, count);
+
     // The positions live in a texture the CPU cannot see, so three has no way
     // to compute bounds. Given explicitly, and frustum culling left on: the
     // field is one draw call and culling it when the camera looks away is free.
@@ -184,9 +210,21 @@ export function LabFieldGPU({ enabled }: { enabled: boolean }) {
       uColor: { value: new THREE.Color('#8a8a85') },
       uAccent: { value: new THREE.Color('#ff5a1f') },
       uSpeedScale: { value: G.speedScale },
+      /**
+       * Set from the tier, so the field's exposure is the same on every rung.
+       * See the block comment in labGpu.frag — without this the section's
+       * brightness is decided by the visitor's GPU.
+       */
+      uDensityGain: { value: 1 },
     }),
     [],
   );
+
+  useEffect(() => {
+    renderUniforms.uDensityGain.value = tier
+      ? (G.referenceCount / tier.count) * G.exposure
+      : G.exposure;
+  }, [renderUniforms, tier]);
 
   const material = useMemo(
     () =>
@@ -212,11 +250,14 @@ export function LabFieldGPU({ enabled }: { enabled: boolean }) {
     gpuFieldHandle.count = sim ? sim.count : 0;
     gpuFieldHandle.tier = tier ? tier.name : 'cpu';
     gpuFieldHandle.reason = cap.reason;
+    if (process.env.NODE_ENV !== 'production') {
+      gpuFieldHandle.renderUniforms = renderUniforms;
+    }
     return () => {
       gpuFieldHandle.count = 0;
       gpuFieldHandle.tier = 'cpu';
     };
-  }, [sim, tier, cap.reason]);
+  }, [sim, tier, cap.reason, renderUniforms]);
 
   useEffect(
     () => () => {
@@ -309,6 +350,7 @@ export function LabFieldGPU({ enabled }: { enabled: boolean }) {
     renderUniforms.uVelocity.value = sim.velocity.current.texture;
     if (process.env.NODE_ENV !== 'production') {
       gpuFieldHandle.positionTarget = sim.position.current;
+      gpuFieldHandle.velocityTarget = sim.velocity.current;
     }
   });
 

@@ -16,6 +16,7 @@ in vec2 aRef;
 out float vWake;
 out float vSpeed;
 out float vSeed;
+out float vDepth;
 
 uniform sampler2D uPosition;
 uniform sampler2D uVelocity;
@@ -33,6 +34,12 @@ void main() {
 
   vec4 mv = modelViewMatrix * vec4(P.xyz, 1.0);
   gl_Position = projectionMatrix * mv;
+
+  // Eye-space distance, for the depth fade in the fragment shader. The CPU
+  // path has always had this and the GPU path was written without it, which is
+  // why the first version read as a flat sheet: with no depth cue, the far
+  // side of a 13-unit-deep field is exactly as bright as the near side.
+  vDepth = -mv.z;
 
   // Perspective-correct size, with a floor. Below about one device pixel a
   // point stops being antialiased and starts flickering in and out as it
