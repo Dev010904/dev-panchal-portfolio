@@ -147,6 +147,26 @@ export const volumetricHandle = {
   calibrated: false,
 };
 
+/**
+ * THE GPGPU FIELD, as reported to the telemetry HUD.
+ *
+ * `count` is EXACT and comes from a fixed ladder, never a formula — a particle
+ * count that drifts with load would make every other number in the HUD
+ * unreproducible, which defeats the point of having one.
+ */
+export const gpuFieldHandle = {
+  count: 0,
+  tier: 'cpu' as string,
+  reason: '',
+  /**
+   * Dev only: the live position target, so the QA harness can read particle
+   * positions back off the GPU. A field that renders as a faint haze is either
+   * simulating wrongly or simply too small to see, and those look identical
+   * from the outside — the only way to tell them apart is to read the numbers.
+   */
+  positionTarget: null as unknown,
+};
+
 /** Section wipe progress, 0..1. Driven by GSAP on navigation. */
 export const wipeHandle = { value: 0, active: false };
 

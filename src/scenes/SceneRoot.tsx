@@ -21,6 +21,7 @@ import { DevLoop } from './DevLoop';
 import { Effects } from './Effects';
 import { FooterFloor } from './FooterFloor';
 import { LabField } from './LabField';
+import { LabFieldGPU } from './LabFieldGPU';
 import { MarkObject } from './MarkObject';
 import { PageStructures } from './PageStructures';
 import { Stage } from './Stage';
@@ -191,7 +192,31 @@ export function SceneRoot() {
           {/* Three hairline arcs. Real geometry, so the mark occludes them. */}
           <SweepLines />
           <AnnotationProjector />
-          <LabField quality={quality} />
+          {/* Two Lab fields, exactly one of which draws.
+              LabFieldGPU probes for float render targets at init and renders
+              nothing if they are unavailable or if this is mobile; LabField is
+              the closed-form 46k CPU path and is the fallback. Deciding here
+              rather than inside one component keeps the fallback a real,
+              already-working code path instead of a branch nobody exercises. */}
+          {/* ── GPGPU FIELD: BUILT, WIRED, AND CURRENTLY OFF ──────────────
+              The simulation runs — positions are finite and the field
+              converges — but it converges to the WRONG target: all 350,464
+              particles collapse into a ~4x1x1.8 unit blob offset in +Z instead
+              of spreading across the "DEV PANCHAL" letterforms, which should
+              be ~11 units wide. Read back with `__qa.particles()`.
+
+              That points at the home-position texture rather than at the
+              physics: `textToPoints` is being asked for 350k points from a
+              1100x260 raster it was written to serve 46k from, and the
+              attractor is faithfully pulling every particle to whatever it
+              returned. Diagnosing that properly needs another pass.
+
+              Until then this stays `enabled={false}` and the CPU field draws
+              exactly as it always has. Shipping the GPU path in this state
+              would replace a working 46k field with an invisible one, which is
+              the one thing this work is not allowed to do. */}
+          <LabFieldGPU enabled={false} />
+          <LabField quality={quality} gpuActive={false} />
           <WorkScene quality={quality} />
           <PageStructures quality={quality} />
           <FooterFloor />

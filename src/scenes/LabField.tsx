@@ -29,7 +29,23 @@ const SHOCKS = LAB.shock.maxConcurrent;
  * way to destroy the frame budget of a section whose entire job is to feel
  * instant.
  */
-export function LabField({ quality }: { quality: 'high' | 'low' }) {
+export function LabField({
+  quality,
+  gpuActive = false,
+}: {
+  quality: 'high' | 'low';
+  /**
+   * True when `LabFieldGPU` is the one drawing. This component then renders
+   * nothing at all — not a hidden copy, not a zero-opacity one. Two particle
+   * fields simulating the same letterforms is double the cost for a result
+   * only one of them contributes to, and the geometry alone is 46k vertices.
+   *
+   * It stays mounted rather than being branched out at the call site so the
+   * fallback is a live code path: if the GPU probe returns null the flag comes
+   * back false and this draws, with no remount and no shader recompile.
+   */
+  gpuActive?: boolean;
+}) {
   const group = useRef<THREE.Group>(null!);
   const points = useRef<THREE.Points>(null!);
   const { camera } = useThree();
@@ -39,7 +55,7 @@ export function LabField({ quality }: { quality: 'high' | 'low' }) {
     ? Math.floor(LAB.count.desktop * MOBILE.particleScale)
     : LAB.count.desktop;
 
-  const active = useScene((s) => s.activeSection === 'LAB');
+  const active = useScene((s) => s.activeSection === 'LAB') && !gpuActive;
 
   // ── Geometry ──────────────────────────────────────────────────────────────
   const geometry = useMemo(() => {
@@ -227,6 +243,10 @@ export function LabField({ quality }: { quality: 'high' | 'low' }) {
     uniforms.uHeldFor.value = blastHandle.heldFor;
     uniforms.uShake.value = blastHandle.shake;
   });
+
+  // Nothing at all when the GPU field has it. Not a hidden copy — 46k vertices
+  // submitted every frame for a field that contributes no pixels.
+  if (gpuActive) return null;
 
   return (
     <group ref={group} position={[0, LAB_ORIGIN_Y, 0]}>

@@ -1133,6 +1133,73 @@ export const LENS = {
 } as const;
 
 /**
+ * THE GPGPU PARTICLE FIELD.
+ *
+ * Position and velocity live in float textures and are stepped by two
+ * fragment shaders; the CPU never touches a particle. The count comes from a
+ * FIXED LADDER chosen at init — 499,849 / 350,464 / 250,000, or the old 46k
+ * CPU path if float render targets are unavailable. Fixed rather than
+ * continuous because the count is reported in the telemetry HUD, and a number
+ * that drifts is not telemetry.
+ *
+ * All of the physics is in `shaders/sim/simCore.glsl`, deliberately as pure
+ * functions with no texture access, so the WebGPU port replaces the executor
+ * rather than rewriting the simulation. See docs/WEBGPU-MIGRATION.md.
+ */
+export const LAB_GPU = {
+  /**
+   * The flow field: an ABC (Arnold-Beltrami-Childress) flow, three rotated
+   * octaves. Divergence-free in CLOSED FORM rather than by finite-differencing
+   * noise — see simCore.glsl. The curl-of-noise version cost roughly 192
+   * sin-based hashes per particle per frame and froze the browser.
+   */
+  flow: {
+    noiseScale: 0.19,
+    noiseSpeed: 0.06,
+    strength: 2.7,
+  },
+  /**
+   * The letterforms, as a spring rather than a lerp. A lerp arrives and stops,
+   * which freezes the field into a dead sign; a spring against the flow never
+   * settles, so the type holds while every particle in it keeps moving.
+   */
+  attractor: { stiffness: 7.5 },
+  /** Global drag. The k in exp(-k·dt), so the feel is refresh-rate invariant. */
+  damping: 1.35,
+  /** Speed clamp, world units/sec. Stops a shock event flinging strays to infinity. */
+  maxSpeed: 9,
+  /** Soft cage radius. Particles outside are eased back, never wrapped. */
+  bounds: 13,
+
+  /** The cursor, as a repulsion well with a dissipating wake. */
+  cursor: {
+    radius: 2.4,
+    strength: 26,
+    /** How fast the wake charge fades. The k in exp(-k·dt). */
+    wakeDecay: 1.9,
+  },
+
+  /**
+   * THE DETONATION. A travelling shell, not an impulse — only particles within
+   * `width` of the expanding front are pushed, so the blast arrives at the far
+   * side of the field measurably later than the near side.
+   */
+  shock: {
+    speed: 11,
+    width: 1.6,
+    strength: 46,
+    /** Seconds before the front is spent. */
+    life: 1.9,
+  },
+
+  /** Render. */
+  pointSize: 1.25,
+  speedScale: 0.42,
+  /** Fade in/out with the section. The k in 1 - exp(-k·dt). */
+  fadeRate: 2.6,
+} as const;
+
+/**
  * VOLUMETRIC LIGHT — raymarched scattering from the key light.
  *
  * Atmosphere, not lens flare. The distinction is not stylistic: a flare is

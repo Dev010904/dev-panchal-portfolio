@@ -9,7 +9,7 @@ import { getLenis } from '@/components/SmoothScroll';
 import { SWEEP } from '@/config/animation';
 import { gsap, ScrollTrigger } from '@/lib/gsap';
 import { runSteps, stepCount } from '@/lib/steps';
-import { blastHandle, glassHandle, volumetricHandle } from '@/scenes/handles';
+import { blastHandle, glassHandle, gpuFieldHandle, volumetricHandle } from '@/scenes/handles';
 import { lightDepth, setLightPosition } from '@/scenes/lightDepth';
 import { nearestOnLine, sweepDebug, sweepScreen } from '@/scenes/sweep';
 import { useScene } from '@/store/scene';
@@ -561,13 +561,36 @@ export function DevLoop() {
       };
     };
 
-    /** Jump to an absolute scroll position and settle it. */
-    const scrollTo = (y: number, settleFrames = 30) => {
-      const lenis = getLenis();
-      if (lenis) lenis.scrollTo(y, { immediate: true, force: true });
-      else window.scrollTo(0, y);
+    /**
+     * Jump to an absolute scroll position and settle it.
+     *
+     * `immediate` sets Lenis's CURRENT scroll but not its TARGET, so the moment
+     * real animation frames resume — which is exactly what a screenshot causes,
+     * because it fronts the tab — Lenis eases back to wherever the target still
+     * points. Forced ticks read the right position and the capture shows the
+     * page somewhere else entirely, which cost a confusing round of "the field
+     * is invisible" before it was spotted.
+     *
+     * Writing `targetScroll` too pins it. `hold` additionally stops the loop,
+     * for the case where a capture has to survive several seconds of real time.
+     */
+    const scrollTo = (y: number, settleFrames = 30, hold = false) => {
+      const lenis = getLenis() as (ReturnType<typeof getLenis> & { targetScroll?: number }) | null;
+      if (lenis) {
+        lenis.scrollTo(y, { immediate: true, force: true });
+        lenis.targetScroll = y;
+        if (hold) lenis.stop();
+      } else {
+        window.scrollTo(0, y);
+      }
       ScrollTrigger.update();
       return tick(1 / 60, settleFrames);
+    };
+
+    /** Release a `scrollTo(..., hold)`. */
+    const scrollRelease = () => {
+      getLenis()?.start();
+      return 'released';
     };
 
     /** Jump to a fraction of total scrollable height. */
@@ -706,6 +729,48 @@ export function DevLoop() {
       return { amount: glassHandle.amount, hover: glassHandle.hover, over: glassHandle.over };
     };
 
+    /**
+     * Read particle positions back off the GPU.
+     *
+     * A particle field that renders as a faint haze is either simulating
+     * wrongly or is simply too small and too spread out to see, and from the
+     * outside those are indistinguishable. This reads the actual float texels
+     * and reports the extent — which tells you which of the two it is in one
+     * call instead of an afternoon of guessing at point sizes.
+     */
+    const particles = (samples = 512) => {
+      const rt = gpuFieldHandle.positionTarget as Parameters<typeof gl.readRenderTargetPixels>[0] | null;
+      if (!rt) return 'no GPU field — either mobile, the CPU fallback, or not yet stepped';
+
+      const side = Math.max(1, Math.floor(Math.sqrt(samples)));
+      const buf = new Float32Array(side * side * 4);
+      gl.readRenderTargetPixels(rt, 0, 0, side, side, buf);
+
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      let minZ = Infinity, maxZ = -Infinity, nan = 0, wake = 0;
+      for (let i = 0; i < side * side; i++) {
+        const x = buf[i * 4], y = buf[i * 4 + 1], z = buf[i * 4 + 2];
+        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) { nan++; continue; }
+        if (x < minX) minX = x; if (x > maxX) maxX = x;
+        if (y < minY) minY = y; if (y > maxY) maxY = y;
+        if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+        wake += buf[i * 4 + 3];
+      }
+      const n = side * side - nan;
+      const r = (v: number) => Number(v.toFixed(2));
+      return {
+        sampled: n,
+        nonFinite: nan,
+        extentX: [r(minX), r(maxX)],
+        extentY: [r(minY), r(maxY)],
+        extentZ: [r(minZ), r(maxZ)],
+        meanWake: Number((wake / Math.max(n, 1)).toFixed(4)),
+        count: gpuFieldHandle.count,
+        tier: gpuFieldHandle.tier,
+        reason: gpuFieldHandle.reason,
+      };
+    };
+
     /** Move the virtual pointer without a real mouse. */
     const pointer = (x: number, y: number) => {
       window.dispatchEvent(
@@ -774,6 +839,7 @@ export function DevLoop() {
     w.__qa = {
       tick,
       scrollTo,
+      scrollRelease,
       scrollToFraction,
       pointer,
       snapshot,
@@ -787,6 +853,7 @@ export function DevLoop() {
       cad,
       volumetric,
       glass,
+      particles,
       shaftLight,
       cursorLag,
       loopOrder,

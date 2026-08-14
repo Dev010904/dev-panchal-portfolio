@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import noise from '@/shaders/lib/noise.glsl';
+import simCore from '@/shaders/sim/simCore.glsl';
 
 /**
  * Minimal `#include <name>` resolver.
@@ -10,7 +11,7 @@ import noise from '@/shaders/lib/noise.glsl';
  * find. This keeps our chunks local and works identically for ShaderMaterial,
  * RawShaderMaterial and postprocessing Effects.
  */
-const CHUNKS: Record<string, string> = { noise };
+const CHUNKS: Record<string, string> = { noise, simCore };
 
 export function glsl(source: string): string {
   return source.replace(/^[ \t]*#include\s+<([\w-]+)>[ \t]*$/gm, (_, name: string) => {
