@@ -6,6 +6,7 @@ import { Chrome } from '@/components/Chrome';
 import { HoldToBlast } from '@/components/HoldToBlast';
 import { Preloader } from '@/components/Preloader';
 import { SmoothScroll } from '@/components/SmoothScroll';
+import { TelemetryHud } from '@/components/TelemetryHud';
 import { SceneRoot } from '@/scenes/SceneRoot';
 import { email, site } from '@/data/site';
 
@@ -130,6 +131,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Preloader />
           <Chrome />
           <HoldToBlast />
+          <TelemetryHud />
           <main id="main" className="relative z-10">
             {children}
           </main>
