@@ -15,7 +15,7 @@ export const site = {
   title: 'Dev Panchal — Web Developer & 3D Web Experiences',
   description:
     'Websites and interactive 3D experiences built with Three.js, WebGL and GSAP.',
-  url: 'https://devpanchal.dev',
+  url: 'https://devpanchal04.netlify.app',
   whatsapp: {
     /**
      * Display form only. Grouped +91 XXXXX XXXXX — the standard Indian
