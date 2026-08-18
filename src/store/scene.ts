@@ -58,6 +58,13 @@ interface SceneStore {
    */
   labCount: number;
 
+  /**
+   * The visitor-trace section is close enough to be worth a network request.
+   * Same gating as `workNear` and for the same reason: a below-the-fold
+   * section must not put a fetch in the critical path.
+   */
+  traceNear: boolean;
+
   setProgress: (p: number) => void;
   setReady: (v: boolean) => void;
   setEntered: (v: boolean) => void;
@@ -74,6 +81,7 @@ interface SceneStore {
   setStructure: (v: 'lattice' | 'stack' | 'helix' | 'archive' | null) => void;
   setFooterNear: (v: boolean) => void;
   setLabCount: (n: number) => void;
+  setTraceNear: (v: boolean) => void;
   setEnv: (v: { reducedMotion?: boolean; isMobile?: boolean; visible?: boolean }) => void;
 }
 
@@ -103,6 +111,7 @@ export const useScene = create<SceneStore>((set) => ({
   isMobile: false,
   visible: true,
   labCount: 0,
+  traceNear: false,
 
   setProgress: (progress) => set({ progress }),
   setReady: (ready) => set({ ready }),
@@ -120,6 +129,7 @@ export const useScene = create<SceneStore>((set) => ({
   setStructure: (structure) => set({ structure }),
   setFooterNear: (footerNear) => set({ footerNear }),
   setLabCount: (labCount) => set({ labCount }),
+  setTraceNear: (traceNear) => set({ traceNear }),
   setEnv: (v) => set(v),
 }));
 

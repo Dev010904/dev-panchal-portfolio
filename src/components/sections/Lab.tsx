@@ -87,9 +87,11 @@ export function Lab() {
         <div className="col-span-12 flex flex-wrap items-baseline justify-between gap-4">
           <SectionTag name="THE LAB" />
           {/* The live count off the resolved tier, never a constant. This said
-              "46K POINTS · GPU" while the GPU path was running 350,464. */}
+              "46K POINTS · GPU" while the GPU path was running 350,464 — and
+              the "GPU" was wrong twice over, since the shipped field is
+              CPU-updated. The count is the honest half; it stands alone. */}
           <span className="t-mono text-[var(--color-fg-dim)]">
-            {labCount > 0 ? `${(labCount / 1000).toFixed(0)}K POINTS · GPU` : 'GPU'}
+            {labCount > 0 ? `${(labCount / 1000).toFixed(0)}K POINTS` : ''}
           </span>
         </div>
         <div className="col-span-12 mt-2 h-px bg-[var(--color-rule)]" />

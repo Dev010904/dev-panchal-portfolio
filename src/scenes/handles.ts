@@ -217,6 +217,20 @@ export const telemetryHandle = {
   frame: 0,
 };
 
+/**
+ * THE VISITOR TRACE.
+ *
+ * `onCommit` lets the DOM section tell the scene that this visitor's stroke
+ * landed, so the structure re-reads and their filament joins it without a
+ * reload. A callback rather than a store field because it fires at most once
+ * per session and a store write would re-render the tree for it.
+ */
+export const traceHandle = {
+  /** How many strokes the scene currently has geometry for. */
+  rendered: 0,
+  onCommit: null as (() => void) | null,
+};
+
 /** Section wipe progress, 0..1. Driven by GSAP on navigation. */
 export const wipeHandle = { value: 0, active: false };
 

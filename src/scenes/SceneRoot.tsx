@@ -28,6 +28,7 @@ import { PageStructures } from './PageStructures';
 import { Stage } from './Stage';
 import { SweepLines } from './SweepLines';
 import { Telemetry } from './Telemetry';
+import { VisitorTrace } from './VisitorTrace';
 import { Volumetrics } from './Volumetrics';
 import { WipeOverlay } from './WipeOverlay';
 import { WorkScene } from './WorkScene';
@@ -201,6 +202,7 @@ export function SceneRoot() {
           <AnnotationProjector />
           {/* Two Lab fields, exactly one of which draws. See <LabFields>. */}
           <LabFields quality={quality} mobile={mobile} />
+          <VisitorTrace />
           <WorkScene quality={quality} />
           <PageStructures quality={quality} />
           <FooterFloor />

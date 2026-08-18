@@ -136,6 +136,18 @@ export const LAB_ORIGIN_Y = -30;
 export const WORK_ORIGIN_Y = -60;
 
 /**
+ * THE VISITOR TRACE sits ABOVE the mark, and everything else on this site sits
+ * below it.
+ *
+ * Not arbitrary. The room descends through the author's own material — the
+ * mark, the Lab, the work, the interior documentation at -90 to -180 — and
+ * this is the one region that is not his. Travelling UP to reach it is the
+ * only structural way the scene can say that, and the camera passes the mark
+ * on the way, which frames the thing everyone is drawing around.
+ */
+export const TRACE_ORIGIN_Y = 30;
+
+/**
  * Interior pages get their own region too. Routing does not unmount the scene;
  * it flies the camera to a different part of the same room, behind the wipe.
  */
@@ -269,6 +281,42 @@ export const SHOTS = {
    * thing for the same reason), clearing the nine columns the paragraph runs
    * across, and dropping it 0.55 keeps it out of the headline's line.
    */
+  /**
+   * TRACE — inside the accumulated structure, not looking at it from outside.
+   *
+   * The radius is deliberately short. Every previous visitor's stroke is a
+   * filament in one shared volume, and a wide establishing shot turns that
+   * into a small object on a dark field — a diagram of the idea rather than
+   * the thing. Sitting close enough that filaments pass on both sides of the
+   * camera is what makes it read as somewhere you are, which is the whole
+   * claim of the section.
+   *
+   * Elevation is slightly negative so the structure hangs overhead and the
+   * mark is below and behind, in the direction the camera just came from.
+   */
+  trace: {
+    /**
+     * The first version of this sat at radius 5.6, INSIDE the structure, on
+     * the argument that filaments passing either side of the camera is what
+     * makes it read as somewhere you are rather than an object you look at.
+     *
+     * Looked at on screen with 41 strokes in the table, that was wrong. Inside
+     * the volume it is a full-frame tangle of lines: it buries the section's
+     * own text, it reads as a screensaver rather than as a record, and it gets
+     * strictly worse as the archive grows — which is the one direction this
+     * section is guaranteed to move in. A section whose art direction degrades
+     * with success is broken.
+     *
+     * From outside, the same geometry reads as a single accumulating body, the
+     * ember of the newest stroke is findable, and 200 strokes is denser rather
+     * than louder.
+     */
+    orbit: [11.2, -22, 6] as [number, number, number],
+    target: [0, TRACE_ORIGIN_Y, 0] as [number, number, number],
+    duration: 1.9,
+    ease: EASE.move,
+    presence: 0.2,
+  },
   about: {
     orbit: [11.4, 34, 16] as [number, number, number],
     target: [-3.6, 0.45, 0] as [number, number, number],
@@ -1146,6 +1194,39 @@ export const LENS = {
  * functions with no texture access, so the WebGPU port replaces the executor
  * rather than rewriting the simulation. See docs/WEBGPU-MIGRATION.md.
  */
+/**
+ * THE VISITOR TRACE.
+ *
+ * Every number that decides how the shared structure looks and how much of it
+ * is kept. The caps are not tuning knobs — they are the contract with the
+ * database, and `lib/trace.ts` enforces the same ones before it ever posts.
+ */
+export const TRACE = {
+  /** Hard cap per stroke. The table has a CHECK constraint at this number. */
+  maxPoints: 120,
+  /** How many strokes are fetched and drawn. Older ones are not kept. */
+  renderLimit: 200,
+  /** Minimum points before a gesture counts as a stroke rather than a click. */
+  minPoints: 6,
+  /** World size of the region a normalised stroke is mapped into. */
+  extent: 2.6,
+  /** How far strokes are spread through depth, so it is a volume not a wall. */
+  depth: 2.2,
+  /** Slow rotation of the whole structure, radians/sec. */
+  spin: 0.045,
+  /** Cursor parallax — how far the structure leans toward the pointer. */
+  parallax: 0.16,
+  /**
+   * The oldest stroke's opacity relative to the newest. NEVER zero: the point
+   * of the section is that nobody who drew is removed, only layered, and a
+   * stroke that fades to nothing has been deleted with extra steps.
+   */
+  oldestOpacity: 0.16,
+  /** The stroke being drawn right now, before it is committed. */
+  pendingOpacity: 0.95,
+  fadeRate: 2.2,
+} as const;
+
 export const LAB_GPU = {
   /**
    * The flow field: an ABC (Arnold-Beltrami-Childress) flow, three rotated
