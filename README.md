@@ -54,7 +54,8 @@ src/
   data/projects.ts        ← the one file to edit to add work
   data/pages.ts           interior page content
   store/scene.ts          zustand scene state
-docs/                     IDENTITY · DESIGN-SYSTEM · HOW-TO-ADD-A-PROJECT · verdict
+docs/                     IDENTITY · DESIGN-SYSTEM · HOW-TO-ADD-A-PROJECT
+docs/webgpu-scene-craft/  scene architecture, GPGPU patterns, design system
 scripts/                  brand asset + screenshot generators
 ```
 
