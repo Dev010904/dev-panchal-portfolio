@@ -50,6 +50,41 @@ function headers(): HeadersInit {
 }
 
 /**
+ * A v4 UUID, from the best source the browser offers.
+ *
+ * `session_id` is a `uuid` column, so this must be a real UUID and not merely
+ * unique. An earlier version fell back to
+ * `${Date.now().toString(16)}-${Math.random()...}` when storage threw, on the
+ * reasoning that a random id per call is still random enough. Postgres
+ * disagreed: every such insert came back 400,
+ * `invalid input syntax for type uuid`. The fallback path silently could not
+ * write at all — the one path that most needed to work, because it is the
+ * private-mode visitor.
+ */
+function uuid(): string {
+  const c: Crypto | undefined = typeof crypto !== 'undefined' ? crypto : undefined;
+  try {
+    if (typeof c?.randomUUID === 'function') return c.randomUUID();
+    // `randomUUID` is secure-context only; `getRandomValues` is not. This is
+    // the branch that runs when the site is opened over plain http on a LAN
+    // address, which is exactly how it gets checked on a phone.
+    if (typeof c?.getRandomValues === 'function') {
+      const b = c.getRandomValues(new Uint8Array(16));
+      b[6] = (b[6] & 0x0f) | 0x40; // version 4
+      b[8] = (b[8] & 0x3f) | 0x80; // variant 10x
+      const h = Array.from(b, (n) => n.toString(16).padStart(2, '0'));
+      return `${h.slice(0, 4).join('')}-${h.slice(4, 6).join('')}-${h.slice(6, 8).join('')}-${h.slice(8, 10).join('')}-${h.slice(10).join('')}`;
+    }
+  } catch {
+    /* fall through to Math.random */
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
+/**
  * Per-tab identity. `sessionStorage`, not `localStorage`: the brief is one
  * stroke per visitor per SESSION, and a value that survives the tab closing
  * would lock someone out of the section forever.
@@ -58,18 +93,15 @@ export function sessionId(): string {
   try {
     let id = sessionStorage.getItem(SESSION_KEY);
     if (!id) {
-      id =
-        typeof crypto !== 'undefined' && 'randomUUID' in crypto
-          ? crypto.randomUUID()
-          : `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
+      id = uuid();
       sessionStorage.setItem(SESSION_KEY, id);
     }
     return id;
   } catch {
-    // Private mode with storage disabled. A random id per call still works;
+    // Private mode with storage disabled. A fresh UUID per call still writes;
     // it just cannot enforce the one-per-session rule client-side, and the
-    // database's UNIQUE constraint is the real enforcement anyway.
-    return `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
+    // table's UNIQUE constraint is the real enforcement anyway.
+    return uuid();
   }
 }
 
