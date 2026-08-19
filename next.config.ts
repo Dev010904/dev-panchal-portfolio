@@ -29,11 +29,29 @@ const SECURITY_HEADERS = [
     key: 'Content-Security-Policy',
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline'",
+      // 'unsafe-eval' IS ADDED IN DEVELOPMENT ONLY, and it is not optional
+      // there. Next's React Refresh runtime evaluates its hot-update payloads
+      // as strings, so a CSP without it throws EvalError before the app
+      // bootstraps — the page loads, the preloader paints, and then nothing
+      // ever advances because the module that would drive it never ran. That
+      // is exactly what happened here, and it looks like a hung scene rather
+      // than a policy error until you read the console.
+      //
+      // Production never evaluates strings, so the shipped policy stays strict.
+      // Keyed off NODE_ENV at build time, so the relaxed form cannot survive
+      // into a production build.
+      process.env.NODE_ENV === 'development'
+        ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+        : "script-src 'self' 'unsafe-inline'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob:",
       "font-src 'self' data:",
-      "connect-src 'self' https://gjeqokcbrhnkmrsmgxge.supabase.co",
+      // The websocket is the dev server's hot-reload channel. Same-origin ws:
+      // is not reliably covered by 'self' across browsers, so it is named
+      // explicitly — and only in development, where it exists.
+      process.env.NODE_ENV === 'development'
+        ? "connect-src 'self' ws: wss: https://gjeqokcbrhnkmrsmgxge.supabase.co"
+        : "connect-src 'self' https://gjeqokcbrhnkmrsmgxge.supabase.co",
       "worker-src 'self' blob:",
       "child-src 'self' blob:",
       "media-src 'self'",
