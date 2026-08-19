@@ -1328,6 +1328,21 @@ export const VOLUMETRIC = {
    */
   steps: 48,
   stepsLow: 24,
+  /**
+   * The floor rung.
+   *
+   * 24 was the bottom of the ladder, and on a machine that misses the budget
+   * AT 24 there was nowhere left to go — it simply ran over frame after frame.
+   * Measured on the deployed site: p50 frame 31ms against an 11ms budget, so
+   * the low rung was still three times too expensive and the ladder had no
+   * answer for it.
+   *
+   * 14 is safe to drop to because the march is jittered per fragment by an
+   * animated hash, so fewer steps become noise rather than concentric shells,
+   * and the grain pass absorbs that noise. Banding is what usually stops you
+   * lowering a raymarch; here it was already solved.
+   */
+  stepsFloor: 14,
   budgetMs: 11,
   /**
    * Half-extent of the scattering volume, world units.

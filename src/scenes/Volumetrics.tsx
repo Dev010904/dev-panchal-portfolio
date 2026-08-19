@@ -149,7 +149,27 @@ export function Volumetrics({ mobile }: { mobile: boolean }) {
       if (cal.current.samples.length >= 45) {
         const sorted = cal.current.samples.slice().sort((a, b) => a - b);
         const p50ms = sorted[Math.floor(sorted.length / 2)] * 1000;
-        volumetricHandle.steps = p50ms > V.budgetMs ? V.stepsLow : V.steps;
+
+        // THREE RUNGS, NOT TWO — and the third exists because the ladder used
+        // to have no answer for a machine that misses the budget at its own
+        // bottom rung. This one boots at stepsLow and could only ever promote
+        // to steps or stay put, so a laptop measuring 31ms against an 11ms
+        // budget kept running 24 steps it plainly could not afford.
+        //
+        // Demote whenever the measurement is over budget; promote only when
+        // there is real headroom rather than a hair under the line, so a
+        // borderline machine settles instead of oscillating. Rounds are still
+        // capped at two, so the ladder can fall 48 -> 24 -> 14 but cannot
+        // wander forever.
+        const current = volumetricHandle.steps;
+        let next = current;
+        if (p50ms > V.budgetMs) {
+          next = current > V.stepsLow ? V.stepsLow : V.stepsFloor;
+        } else if (p50ms < V.budgetMs * 0.6) {
+          next = current < V.stepsLow ? V.stepsLow : V.steps;
+        }
+
+        volumetricHandle.steps = next;
         volumetricHandle.calibrated = true;
         cal.current.rounds++;
         cal.current.samples.length = 0;
