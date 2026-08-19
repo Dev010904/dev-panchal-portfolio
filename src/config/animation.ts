@@ -1367,11 +1367,18 @@ export const VOLUMETRIC = {
   /** Inverse-square softening, so the falloff is not a hard 1/d². */
   attenuation: 0.045,
   /**
-   * Light-space depth map resolution. 256 is plenty for the shafts, which only
-   * need a silhouette, but the caustics take a LAPLACIAN of this map and a
-   * second derivative is far more sensitive to resolution than a threshold is.
+   * Light-space depth map resolution.
+   *
+   * 256, because the shafts only need a silhouette. This was 512 for one
+   * reason: the caustic floor took a LAPLACIAN of this map, and a second
+   * derivative is far more sensitive to resolution than a threshold is. THE
+   * CAUSTICS WERE CUT, so that requirement went with them and the extra
+   * resolution was left behind paying for nothing — four times the fill on a
+   * pass that runs every frame, to sharpen an edge no remaining effect reads.
+   *
+   * If a caustic is ever attempted again it needs 512 back. Nothing else does.
    */
-  shadowSize: 512,
+  shadowSize: 256,
   /** Orthographic half-extent of the light camera, world units. */
   lightExtent: 2.8,
   lightNear: 0.5,
