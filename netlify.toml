@@ -1,0 +1,74 @@
+# Netlify configuration.
+#
+# Headers only. The build command and publish directory are deliberately NOT
+# set here — Netlify's Next.js auto-detection already handles them, and
+# duplicating that config in two places is how the two drift apart.
+
+# ── Security headers, every route ────────────────────────────────────────────
+#
+# The threat model for a portfolio is small but not empty: the site talks to a
+# Supabase table over the public internet, and it renders strokes that other
+# visitors wrote. That makes clickjacking, MIME sniffing, referrer leakage and
+# script injection all worth closing off explicitly rather than by assumption.
+[[headers]]
+  for = "/*"
+
+  [headers.values]
+    # Content Security Policy.
+    #
+    # connect-src is the one that matters here: it pins every outbound request
+    # to this origin and the ONE Supabase project. If a dependency is ever
+    # compromised and tries to exfiltrate to an attacker's host, the browser
+    # refuses the request rather than trusting the script.
+    #
+    # 'unsafe-inline' is present in script-src because Next.js App Router
+    # inlines its own bootstrap and flight payload, and removing it requires
+    # nonce plumbing through middleware. Recorded as a known trade-off, not an
+    # oversight: this site renders no user-authored HTML anywhere — the visitor
+    # strokes are numeric arrays drawn to a canvas, never injected as markup —
+    # so the injection surface it would protect is not reachable.
+    #
+    # style-src needs it too: GSAP writes inline styles every frame, which is
+    # the entire animation layer.
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://gjeqokcbrhnkmrsmgxge.supabase.co; worker-src 'self' blob:; child-src 'self' blob:; media-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
+
+    # Clickjacking. frame-ancestors above is the modern control; this is the
+    # legacy header for browsers that predate it. Both say the same thing.
+    X-Frame-Options = "DENY"
+
+    # Stop the browser second-guessing declared Content-Types. Without it a
+    # served asset can be re-interpreted as script.
+    X-Content-Type-Options = "nosniff"
+
+    # Send the full URL only to this origin; cross-origin gets the bare origin.
+    # Keeps interior route paths out of third-party referrer logs.
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+    # Nothing here uses a camera, a microphone, location or payments. Denying
+    # them outright means a future dependency cannot quietly start asking.
+    Permissions-Policy = "accelerometer=(), autoplay=(), camera=(), display-capture=(), encrypted-media=(), fullscreen=(self), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), usb=(), xr-spatial-tracking=()"
+
+    # Two years, subdomains included, preload-eligible. Netlify terminates TLS
+    # for this domain, so there is no plaintext path to preserve.
+    Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
+
+    # Isolate the browsing context group from cross-origin openers.
+    Cross-Origin-Opener-Policy = "same-origin"
+
+    # Do not leak the visitor's next navigation to DNS ahead of the click.
+    X-DNS-Prefetch-Control = "off"
+
+# ── Immutable assets ─────────────────────────────────────────────────────────
+# Next emits content-hashed filenames under /_next/static, so these can be
+# cached hard and forever. A new build produces new names.
+[[headers]]
+  for = "/_next/static/*"
+
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/fonts/*"
+
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
