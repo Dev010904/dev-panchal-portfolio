@@ -317,6 +317,32 @@ export const SHOTS = {
     ease: EASE.move,
     presence: 0.2,
   },
+  /**
+   * THE RIG — the camera comes back to the mark so the light can be operated.
+   *
+   * Every other section either looks at the mark or looks somewhere else. This
+   * one hands it over: the visitor drags and the rim light moves, and the
+   * shafts, the shadow through the D's counter and the chamfer speculars all
+   * answer. So the framing has two jobs the other shots do not have.
+   *
+   * Radius 5.9 rather than the hero's 4.9, because the shafts are the subject
+   * as much as the object is, and they need air around the silhouette to read
+   * as light in a room instead of a glow stuck to an edge.
+   *
+   * Azimuth +20 puts the mark slightly off-axis so the light can travel behind
+   * it and come back out the other side visibly. At a head-on angle the whole
+   * traverse happens behind the object and the visitor cannot see what their
+   * own gesture is doing, which is the one thing this section cannot afford.
+   *
+   * Target sits a little above origin so the object hangs in the upper half
+   * and the readout below it has somewhere to live.
+   */
+  rig: {
+    orbit: [5.9, 20, 7] as [number, number, number],
+    target: [0, 0.05, 0] as [number, number, number],
+    duration: 1.7,
+    ease: EASE.move,
+  },
   about: {
     orbit: [11.4, 34, 16] as [number, number, number],
     target: [-3.6, 0.45, 0] as [number, number, number],
@@ -1435,8 +1461,14 @@ export const VOLUMETRIC = {
   color: '#8fb6dd',
   /** How fast the whole layer fades in and out. The k in 1 - exp(-k·dt). */
   fadeRate: 2.2,
-  /** Shots where shafts are live. The mark has to be the subject. */
-  shots: ['hero', 'resolve', 'exploded', 'dissolved', 'release'] as const,
+  /**
+   * Shots where shafts are live. The mark has to be the subject.
+   *
+   * `rig` is on this list for a stronger reason than the others: in that
+   * section the shafts ARE the subject, and the visitor is moving the light
+   * that casts them. Take it off this list and the section has nothing to do.
+   */
+  shots: ['hero', 'resolve', 'exploded', 'dissolved', 'release', 'rig'] as const,
 } as const;
 
 /**
@@ -1451,6 +1483,66 @@ export const VOLUMETRIC = {
  * The ember inlay keeps its own attenuation, so it refracts and splits through
  * the surrounding glass instead of being a flat orange bar behind it.
  */
+/**
+ * THE RIG — the section where the visitor moves the light.
+ *
+ * The light is driven in SPHERICAL coordinates around the mark, not in x/y/z,
+ * and that is the decision the whole section rests on. A drag mapped to world
+ * axes lets the visitor put the light inside the object, in front of it, or a
+ * hundred units away — and every one of those states looks broken rather than
+ * exploratory. On a sphere at fixed radius there is no wrong answer: every
+ * position the gesture can reach is a lit frame someone might have art-directed.
+ *
+ * ── WHY THE AZIMUTH IS CLAMPED BEHIND THE OBJECT ──────────────────────────
+ *
+ * God-rays are a BACKLIT phenomenon. Henyey-Greenstein at g = 0.72 returns
+ * about 0.0075 when the light is on the camera's side against 1.75 at its
+ * peak — a factor of 230. Let the drag bring the light round to the front and
+ * the shafts do not dim, they vanish, and the visitor concludes the feature is
+ * broken when it is in fact obeying physics. So the range keeps cos(azimuth)
+ * negative: the light travels the whole way across the BACK of the mark, left
+ * to right, which is exactly the traverse where the shafts and the shadow
+ * through the D's counter sweep most visibly.
+ *
+ * The rest position is the one already chosen on screen for the hero — see
+ * VOLUMETRIC.lightPosition — expressed in this coordinate system rather than
+ * re-picked, so the section starts from the framing the rest of the site uses.
+ */
+export const RIG = {
+  /** Orbit radius, world units. Matches |VOLUMETRIC.lightPosition| (~5.57). */
+  radius: 5.57,
+  /**
+   * Azimuth limits, degrees, measured from +Z toward +X. Both ends keep the
+   * light behind the mark — see the note above, this is not a taste boundary.
+   */
+  azimuthRange: [-214, -126] as [number, number],
+  /**
+   * Elevation limits, degrees. The floor stays above the horizon because a
+   * light level with the mark rakes along the extrusion and stops reading as
+   * a source in a room; the ceiling stops short of overhead, where the shafts
+   * foreshorten into a halo and the shadow collapses under the object.
+   */
+  elevationRange: [12, 58] as [number, number],
+  /** Rest pose — VOLUMETRIC.lightPosition in spherical, not a second opinion. */
+  restAzimuth: -166,
+  restElevation: 34,
+  /** How fast the light chases the drag. The k in 1 - exp(-k·dt). */
+  followRate: 7.5,
+  /** Degrees of light travel per full viewport width / height of drag. */
+  dragAzimuth: 150,
+  dragElevation: 80,
+  /**
+   * Idle drift, so the section is alive before anyone touches it — the single
+   * most important property this section has, and the reason it replaced one
+   * that started empty and waited to be given something.
+   */
+  driftAzimuthDeg: 9,
+  driftElevationDeg: 4,
+  driftRate: 0.11,
+  /** How long after release before the idle drift resumes, seconds. */
+  driftResumeDelay: 2.4,
+} as const;
+
 export const GLASS = {
   ior: 1.52,
   thickness: 1.35,
@@ -1541,7 +1633,34 @@ export const MOBILE = {
   breakpoint: 820,
   bloomOnly: true,
   particleScale: 0.32,
-  dpr: [1, 1.75] as [number, number],
+  /** Same reasoning as DPR: the floor is the part that has to be reachable. */
+  dpr: [0.75, 1.75] as [number, number],
 } as const;
 
-export const DPR: [number, number] = [1, 2];
+/**
+ * DEVICE PIXEL RATIO — the floor matters more than the ceiling.
+ *
+ * `[min, max]`, driven by PerformanceMonitor + AdaptiveDpr in SceneRoot. The
+ * ceiling is what a fast machine gets; the FLOOR is what a slow one is allowed
+ * to fall back to, and it was 1.
+ *
+ * That floor was the whole problem. Measured on the deployed site: p50 frame
+ * 29ms on a 60Hz display, which is two vsync intervals — every frame missed
+ * 16.7ms and landed on 33.3ms, locking the site at 30fps. The adaptive system
+ * was working exactly as designed and had nowhere left to go, because it was
+ * already sitting on its own floor. Same shape of bug as the volumetric step
+ * ladder having no bottom rung: a mechanism that can only choose between two
+ * options it cannot afford.
+ *
+ * The site is fill-bound, which was measured rather than assumed — shrinking
+ * the canvas 7x took the best achievable frame from 33.4ms to 3.5ms. So pixels
+ * are the currency, and 0.7 spends 49% of them.
+ *
+ * WHY THIS IS THE RIGHT LEVER HERE AND NOT A COP-OUT: every word on this site
+ * is real DOM, not canvas. Dropping below 1 softens the mark, the shafts and
+ * the particle field — all of which sit under a grain pass on a near-black
+ * frame, where it is close to invisible — and touches the typography not at
+ * all. A machine that can hold 60fps at dpr 2 still gets dpr 2; only the
+ * machines that were dropping frames pay, and they were already paying more.
+ */
+export const DPR: [number, number] = [0.7, 2];
