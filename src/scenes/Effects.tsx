@@ -47,26 +47,26 @@ export function Effects({ mobile }: { mobile: boolean }) {
     );
   }
 
+  /*
+   * MULTISAMPLING IS OFF, AND THAT IS A MEASURED DECISION.
+   *
+   * This was 4. MSAA on the composer's targets multiplies the samples taken by
+   * every full-screen pass in the stack — bloom's mip chain, the aberration,
+   * the grain, the vignette — and this site is fill-rate bound, which was
+   * measured rather than assumed: shrinking the canvas from 1.79M pixels to
+   * 256k took the BEST achievable frame from 33.4ms to 3.5ms. Cost that falls
+   * that hard with pixel count is fill, and 4x MSAA is a 4x multiplier on the
+   * most expensive pixels in the frame.
+   *
+   * What it buys back is edge quality on the mark's chamfers. What already
+   * covers that: bloom softens exactly the high-contrast edges MSAA would have
+   * smoothed, and the grain sits over the whole frame. The mobile path above
+   * has run at 0 since it was written, for the same reason.
+   *
+   * If aliasing ever reads as cheap on the mark, the answer is 2 rather than a
+   * return to 4 — but look at it on screen before paying for it again.
+   */
   return (
-    {/*
-      MULTISAMPLING IS OFF, AND THAT IS A MEASURED DECISION.
-
-      This was 4. MSAA on the composer's targets multiplies the samples on
-      every full-screen pass in the stack — bloom's mip chain, the aberration,
-      the grain, the vignette — and this site is fill-rate bound, which was
-      measured rather than assumed: shrinking the canvas from 1.79M pixels to
-      256k took the best achievable frame from 33.4ms to 3.5ms. Cost that
-      scales with pixels is the whole problem, and 4x MSAA is a 4x multiplier
-      on the most expensive pixels in the frame.
-
-      What it buys back is edge quality on the mark's chamfers. What already
-      covers that: bloom softens exactly the high-contrast edges MSAA would
-      have smoothed, and the grain pass sits over the whole frame. The mobile
-      path has run at 0 since it was written for the same reason.
-
-      If aliasing ever reads as cheap on the mark, the answer is 2 rather than
-      4 — but check it on screen before paying for it again.
-    */}
     <EffectComposer multisampling={0} enableNormalPass={false}>
       {/* There was a scene blur/desaturate pass here, driven by the menu. It
           is gone on purpose: the drawer is opaque and the scene beside it
