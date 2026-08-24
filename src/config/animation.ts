@@ -1720,7 +1720,21 @@ export const HUD = {
 /** Post-processing. Restrained: this is a studio photo, not a music video. */
 export const POST = {
   bloom: { intensity: 0.42, threshold: 0.72, smoothing: 0.3, mipmapBlur: true },
-  chromaticAberration: 0.00055,
+  /**
+   * Lens aberration. Was 0.00055.
+   *
+   * That figure was set while the composer had no multisampling, so every
+   * silhouette in the frame was already a hard stair-step — and a radial colour
+   * split laid over a stair-step does not read as a lens, it reads as a magenta
+   * fringe crawling up the edge of the object. Zoomed in on the mark's bowl it
+   * was the most conspicuous artefact on the site.
+   *
+   * With MSAA back on, the edge underneath is clean and the aberration has
+   * something smooth to separate, so it needs far less of it to register. This
+   * is deliberately at the level where you notice it only if you look for it,
+   * which is the correct amount of a lens defect on a studio photograph.
+   */
+  chromaticAberration: 0.0003,
   /**
    * Grain. This is doing engineering work, not styling: 8-bit colour has 256
    * steps per channel, a gradient across a near-black page crosses very few of

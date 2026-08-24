@@ -186,6 +186,12 @@ export function SceneRoot() {
         lensHandle.x = e.clientX;
         lensHandle.y = e.clientY;
       }
+
+      // Repaint the cursor dot NOW, at the pointer's own event rate, rather
+      // than waiting for the next rendered frame. See the note on `onMove` in
+      // lib/pointer.ts: everything else here can be a frame late, and the
+      // thing you are physically holding cannot.
+      pointerHandle.onMove?.();
     };
 
     // `pointerleave` on the document fires when the cursor exits the window

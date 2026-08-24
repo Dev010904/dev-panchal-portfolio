@@ -100,6 +100,39 @@ export function Cursor() {
     let wroteDotY = NaN;
     let wroteDotFilled = -1;
 
+    /**
+     * Whether the dot is currently swallowed by the filled ring. Owned by the
+     * ticker (it follows the eased hover scale) but read by the event-rate dot
+     * writer below, so it has to live outside `step`.
+     */
+    let filled = 0;
+
+    /**
+     * THE DOT WRITE — called from the pointer event, and again each frame.
+     *
+     * Calling it twice is free: the guard below compares the RAW pointer
+     * coordinates against what was last written, so the per-frame call is a
+     * no-op whenever the event already handled that position. Keeping the
+     * per-frame call matters for two cases the event cannot cover — the hover
+     * state changing while the pointer is still, and the QA harness stepping
+     * frames with no real input at all.
+     */
+    const writeDot = () => {
+      const el = dot.current;
+      if (!el) return;
+      const px = pointerHandle.x;
+      const py = pointerHandle.y;
+      if (px === wroteDotX && py === wroteDotY && filled === wroteDotFilled) return;
+      wroteDotX = px;
+      wroteDotY = py;
+      wroteDotFilled = filled;
+      el.style.transform =
+        'translate3d(' + px + 'px,' + py + 'px,0) translate(-50%,-50%) scale(' +
+        (filled ? 0 : 1) + ')';
+    };
+
+    pointerHandle.onMove = writeDot;
+
     const step = (dtRaw: number) => {
       const dt = Math.min(dtRaw, 0.05);
       const px = pointerHandle.x;
@@ -130,7 +163,7 @@ export function Cursor() {
       const goal = useScene.getState().hovering ? CURSOR.hoverScale : 1;
       scale += (goal - scale) * (1 - Math.exp(-9.6 * dt));
 
-      const filled = scale > 1.6 ? 1 : 0;
+      filled = scale > 1.6 ? 1 : 0;
       const show = pointerHandle.present ? 1 : 0;
       if (show !== wroteVisible) {
         wroteVisible = show;
@@ -166,22 +199,10 @@ export function Cursor() {
         }
       }
 
-      // ── Dot: exact. No damping, no rounding. ──────────────────────────────
-      // The guard compares the RAW pointer coordinates, not a rounded copy, so
-      // the dot keeps its defining property — it is drawn at the exact pointer
-      // position, 0px of error at every speed. A frame where the pointer has
-      // not moved would paint a byte-identical string, and that is the only
-      // frame this skips.
-      if (dot.current) {
-        if (px !== wroteDotX || py !== wroteDotY || filled !== wroteDotFilled) {
-          wroteDotX = px;
-          wroteDotY = py;
-          wroteDotFilled = filled;
-          dot.current.style.transform =
-            'translate3d(' + px + 'px,' + py + 'px,0) translate(-50%,-50%) scale(' +
-            (filled ? 0 : 1) + ')';
-        }
-      }
+      // ── Dot: exact, and no longer waiting for this frame to say so. ──────
+      // The pointer event already called this the moment the mouse moved; the
+      // call here only catches a hover-state change or a harness-stepped frame.
+      writeDot();
 
       if (filled !== wroteFilled) wroteFilled = filled;
 
@@ -198,6 +219,9 @@ export function Cursor() {
 
     return () => {
       unstep();
+      // Release the event-rate writer. Left set, it would keep writing into a
+      // detached node on every pointer move for the rest of the session.
+      if (pointerHandle.onMove === writeDot) pointerHandle.onMove = null;
       document.documentElement.classList.remove('has-cursor');
     };
   }, [reducedMotion]);

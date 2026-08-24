@@ -48,26 +48,33 @@ export function Effects({ mobile }: { mobile: boolean }) {
   }
 
   /*
-   * MULTISAMPLING IS OFF, AND THAT IS A MEASURED DECISION.
+   * MULTISAMPLING IS 2, AFTER LOOKING AT IT ON SCREEN.
    *
-   * This was 4. MSAA on the composer's targets multiplies the samples taken by
-   * every full-screen pass in the stack — bloom's mip chain, the aberration,
-   * the grain, the vignette — and this site is fill-rate bound, which was
-   * measured rather than assumed: shrinking the canvas from 1.79M pixels to
-   * 256k took the BEST achievable frame from 33.4ms to 3.5ms. Cost that falls
-   * that hard with pixel count is fill, and 4x MSAA is a 4x multiplier on the
-   * most expensive pixels in the frame.
+   * The note that used to sit here set 0 and said: if aliasing ever reads as
+   * cheap on the mark, the answer is 2 rather than a return to 4 — but look at
+   * it on screen first. Looked at, zoomed, on the deployed site: the mark's
+   * bowl silhouette is a hard stair-step, and the chromatic aberration lands a
+   * magenta fringe on each step, which is the worst possible pairing. Whatever
+   * the frame budget says, that is not shippable on a site whose subject is a
+   * machined object.
    *
-   * What it buys back is edge quality on the mark's chamfers. What already
-   * covers that: bloom softens exactly the high-contrast edges MSAA would have
-   * smoothed, and the grain sits over the whole frame. The mobile path above
-   * has run at 0 since it was written, for the same reason.
+   * It also rested on a claim that is not true. MSAA does NOT multiply the
+   * full-screen passes. `multisampling` applies to the render target the SCENE
+   * draws into; that target is resolved to an ordinary texture before bloom,
+   * the aberration, the grain and the vignette ever run, so every one of those
+   * passes reads exactly the same number of pixels it did at 0. Nor does it
+   * multiply shader cost inside the scene: MSAA evaluates the fragment shader
+   * once per pixel per primitive and writes the result to the covered samples,
+   * so the expensive raymarch is not run twice. What 2x actually costs is
+   * sample memory and the resolve blit — bandwidth, not shading.
    *
-   * If aliasing ever reads as cheap on the mark, the answer is 2 rather than a
-   * return to 4 — but look at it on screen before paying for it again.
+   * That is a real cost on a fill-bound site, which is why this is 2 and not 4,
+   * and why mobile stays at 0. But it is a much smaller cost than the reasoning
+   * it replaced assumed, and it buys back the one thing the whole design rests
+   * on: a clean edge.
    */
   return (
-    <EffectComposer multisampling={0} enableNormalPass={false}>
+    <EffectComposer multisampling={2} enableNormalPass={false}>
       {/* There was a scene blur/desaturate pass here, driven by the menu. It
           is gone on purpose: the drawer is opaque and the scene beside it
           stays sharp, so the pass existed only to run a fullscreen blur at
