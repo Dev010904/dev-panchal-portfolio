@@ -218,17 +218,19 @@ export const telemetryHandle = {
 };
 
 /**
- * THE VISITOR TRACE.
+ * THE CONSTELLATION.
  *
- * `onCommit` lets the DOM section tell the scene that this visitor's stroke
- * landed, so the structure re-reads and their filament joins it without a
- * reload. A callback rather than a store field because it fires at most once
- * per session and a store write would re-render the tree for it.
+ * The node index currently picked, or -1. This is the scene's OWN copy, and it
+ * exists so the render loop can answer "did the pick change?" without reading
+ * the zustand store every frame.
+ *
+ * That question has to be cheap, because the answer is almost always no: the
+ * pick is recomputed sixty times a second and changes maybe twice a second
+ * while the pointer is moving. Pushing to the store unconditionally would
+ * re-render the readout on every frame to write the same string.
  */
-export const traceHandle = {
-  /** How many strokes the scene currently has geometry for. */
-  rendered: 0,
-  onCommit: null as (() => void) | null,
+export const constellationHandle = {
+  focus: -1,
 };
 
 /** Section wipe progress, 0..1. Driven by GSAP on navigation. */

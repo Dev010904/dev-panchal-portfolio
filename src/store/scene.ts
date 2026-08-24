@@ -59,11 +59,11 @@ interface SceneStore {
   labCount: number;
 
   /**
-   * The visitor-trace section is close enough to be worth a network request.
-   * Same gating as `workNear` and for the same reason: a below-the-fold
-   * section must not put a fetch in the critical path.
+   * Index into `data/stack.ts` of the constellation node under the pointer, or
+   * -1 for none. Written by the scene when the pick CHANGES, never per frame —
+   * the DOM readout is the only consumer and it re-renders on every write.
    */
-  traceNear: boolean;
+  constellationFocus: number;
 
   setProgress: (p: number) => void;
   setReady: (v: boolean) => void;
@@ -81,7 +81,7 @@ interface SceneStore {
   setStructure: (v: 'lattice' | 'stack' | 'helix' | 'archive' | null) => void;
   setFooterNear: (v: boolean) => void;
   setLabCount: (n: number) => void;
-  setTraceNear: (v: boolean) => void;
+  setConstellationFocus: (v: number) => void;
   setEnv: (v: { reducedMotion?: boolean; isMobile?: boolean; visible?: boolean }) => void;
 }
 
@@ -111,7 +111,7 @@ export const useScene = create<SceneStore>((set) => ({
   isMobile: false,
   visible: true,
   labCount: 0,
-  traceNear: false,
+  constellationFocus: -1,
 
   setProgress: (progress) => set({ progress }),
   setReady: (ready) => set({ ready }),
@@ -129,7 +129,7 @@ export const useScene = create<SceneStore>((set) => ({
   setStructure: (structure) => set({ structure }),
   setFooterNear: (footerNear) => set({ footerNear }),
   setLabCount: (labCount) => set({ labCount }),
-  setTraceNear: (traceNear) => set({ traceNear }),
+  setConstellationFocus: (constellationFocus) => set({ constellationFocus }),
   setEnv: (v) => set(v),
 }));
 

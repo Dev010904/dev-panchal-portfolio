@@ -26,9 +26,9 @@ import { LabFieldGPU } from './LabFieldGPU';
 import { MarkObject } from './MarkObject';
 import { PageStructures } from './PageStructures';
 import { Stage } from './Stage';
+import { StackConstellation } from './StackConstellation';
 import { SweepLines } from './SweepLines';
 import { Telemetry } from './Telemetry';
-import { VisitorTrace } from './VisitorTrace';
 import { Volumetrics } from './Volumetrics';
 import { WipeOverlay } from './WipeOverlay';
 import { WorkScene } from './WorkScene';
@@ -50,6 +50,68 @@ export function SceneRoot() {
   const setEnv = useScene((s) => s.setEnv);
   const [mobile, setMobile] = useState(false);
   const [reduced, setReduced] = useState(false);
+
+  /**
+   * THE CANVAS IS NOT MOUNTED ON THE FIRST RENDER, AND THAT IS THE WHOLE POINT.
+   *
+   * Creating the WebGL context, extruding the mark, area-sampling it for the
+   * particle cloud, convolving the environment map and compiling every shader
+   * program are all synchronous main-thread work. Mounted inline, all of it
+   * lands in the same task as the client's first render — so the browser cannot
+   * paint the DOM until the 3D scene has finished booting, even though the DOM
+   * does not depend on it and the preloader is covering the screen anyway.
+   *
+   * That is the wrong order. The DOM is the content; the scene is the surface
+   * it composites over. Painting the text first costs the scene a few hundred
+   * milliseconds it spends behind a preloader regardless, and buys a first
+   * paint that does not wait on the GPU.
+   *
+   * TWO rAFs, THEN IDLE. One rAF fires BEFORE the paint it was scheduled
+   * against; two guarantees at least one frame has actually been presented.
+   * `requestIdleCallback` then waits for the main thread to have room, so the
+   * context creation is not competing with hydration for the same task.
+   *
+   * The 600ms timeout is the floor, not the target. requestIdleCallback on a
+   * genuinely busy thread can be starved indefinitely, and a scene that never
+   * mounts because the machine was briefly busy is a far worse failure than a
+   * scene that mounts slightly early. Safari has no requestIdleCallback at all,
+   * which the fallback covers.
+   */
+  const [live, setLive] = useState(false);
+
+  useEffect(() => {
+    let frame = 0;
+    let idle = 0;
+    let timer = 0;
+
+    const go = () => setLive(true);
+
+    const whenIdle = () => {
+      const ric = (
+        window as unknown as {
+          requestIdleCallback?: typeof requestIdleCallback;
+        }
+      ).requestIdleCallback;
+      if (ric) idle = ric(go, { timeout: 600 });
+      else timer = window.setTimeout(go, 1);
+    };
+
+    frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(whenIdle);
+    });
+
+    return () => {
+      cancelAnimationFrame(frame);
+      if (idle) {
+        (
+          window as unknown as {
+            cancelIdleCallback?: typeof cancelIdleCallback;
+          }
+        ).cancelIdleCallback?.(idle);
+      }
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
 
   // ── Environment probes ────────────────────────────────────────────────────
   useEffect(() => {
@@ -152,67 +214,68 @@ export function SceneRoot() {
 
   return (
     <div className="fixed inset-0 z-0" aria-hidden="true">
-      <Canvas
-        dpr={mobile ? MOBILE.dpr : DPR}
-        gl={{
-          antialias: false,
-          alpha: false,
-          powerPreference: 'high-performance',
-          stencil: false,
-          depth: true,
-        }}
-        camera={{
-          fov: CAMERA.fov,
-          near: CAMERA.near,
-          far: CAMERA.far,
-          position: [0, 0, SHOTS.hero.orbit[0]],
-        }}
-        onCreated={({ gl, scene }) => {
-          gl.toneMapping = THREE.ACESFilmicToneMapping;
-          gl.toneMappingExposure = 1.05;
-          gl.outputColorSpace = THREE.SRGBColorSpace;
-          gl.setClearColor('#08080a', 1);
-          scene.fog = new THREE.FogExp2('#08080a', 0.052);
-        }}
-      >
-        <ProgressBridge />
-        <FrameProbe />
-        {/* Owns gl.info: autoReset off, exactly one reset per real frame. Must
+      {live && (
+        <Canvas
+          dpr={mobile ? MOBILE.dpr : DPR}
+          gl={{
+            antialias: false,
+            alpha: false,
+            powerPreference: 'high-performance',
+            stencil: false,
+            depth: true,
+          }}
+          camera={{
+            fov: CAMERA.fov,
+            near: CAMERA.near,
+            far: CAMERA.far,
+            position: [0, 0, SHOTS.hero.orbit[0]],
+          }}
+          onCreated={({ gl, scene }) => {
+            gl.toneMapping = THREE.ACESFilmicToneMapping;
+            gl.toneMappingExposure = 1.05;
+            gl.outputColorSpace = THREE.SRGBColorSpace;
+            gl.setClearColor('#08080a', 1);
+            scene.fog = new THREE.FogExp2('#08080a', 0.052);
+          }}
+        >
+          <ProgressBridge />
+          <FrameProbe />
+          {/* Owns gl.info: autoReset off, exactly one reset per real frame. Must
             stay outside the Suspense boundary — a suspension in there would
             take the per-frame reset down with it and the counters would start
             accumulating with nothing to say so. */}
-        <Telemetry />
-        {process.env.NODE_ENV !== 'production' && <DevLoop />}
+          <Telemetry />
+          {process.env.NODE_ENV !== 'production' && <DevLoop />}
 
-        {/* Anything that can suspend (the environment map, project textures)
+          {/* Anything that can suspend (the environment map, project textures)
             sits inside this boundary. Without it a suspension inside the
             Canvas takes the whole tree down with no visible error. */}
-        <Suspense fallback={null}>
-          <Stage mobile={mobile} />
-          <CameraRig />
+          <Suspense fallback={null}>
+            <Stage mobile={mobile} />
+            <CameraRig />
 
-          <MarkObject handles={markHandles} quality={quality} />
-          {/* MUST stay after MarkObject. R3F dispatches useFrame subscribers in
+            <MarkObject handles={markHandles} quality={quality} />
+            {/* MUST stay after MarkObject. R3F dispatches useFrame subscribers in
               subscription order, so this reads the mark's transforms for THIS
               frame when it renders the light-space depth map. Move it above and
               the shafts silently lag the object by a frame. */}
-          <Volumetrics mobile={mobile} />
-          {/* Three hairline arcs. Real geometry, so the mark occludes them. */}
-          <SweepLines />
-          <AnnotationProjector />
-          {/* Two Lab fields, exactly one of which draws. See <LabFields>. */}
-          <LabFields quality={quality} mobile={mobile} />
-          <VisitorTrace />
-          <WorkScene quality={quality} />
-          <PageStructures quality={quality} />
-          <FooterFloor />
+            <Volumetrics mobile={mobile} />
+            {/* Three hairline arcs. Real geometry, so the mark occludes them. */}
+            <SweepLines />
+            <AnnotationProjector />
+            {/* Two Lab fields, exactly one of which draws. See <LabFields>. */}
+            <LabFields quality={quality} mobile={mobile} />
+            <StackConstellation />
+            <WorkScene quality={quality} />
+            <PageStructures quality={quality} />
+            <FooterFloor />
 
-          <WipeOverlay />
+            <WipeOverlay />
 
-          <Effects mobile={mobile || reduced} />
-        </Suspense>
+            <Effects mobile={mobile || reduced} />
+          </Suspense>
 
-        {/*
+          {/*
           WHAT MAKES AdaptiveDpr ACTUALLY DO ANYTHING.
 
           `AdaptiveDpr` only reacts to `state.performance.current`, and nothing
@@ -230,14 +293,15 @@ export function SceneRoot() {
           between two resolutions forever — that oscillation is far more visible
           than simply running at the lower one.
         */}
-        <PerformanceMonitor
-          bounds={(refreshRate) => (refreshRate > 90 ? [50, 90] : [45, 58])}
-          flipflops={3}
-        />
-        <AdaptiveDpr pixelated={false} />
-        <AdaptiveEvents />
-        <Preload all />
-      </Canvas>
+          <PerformanceMonitor
+            bounds={(refreshRate) => (refreshRate > 90 ? [50, 90] : [45, 58])}
+            flipflops={3}
+          />
+          <AdaptiveDpr pixelated={false} />
+          <AdaptiveEvents />
+          <Preload all />
+        </Canvas>
+      )}
     </div>
   );
 }
@@ -309,9 +373,7 @@ function LabFields({ quality, mobile }: { quality: 'high' | 'low'; mobile: boole
   // The section header prints this. It is written here rather than inside
   // either field because this is the only place that knows which one won.
   useEffect(() => {
-    const cpu = mobile
-      ? Math.floor(LAB.count.desktop * MOBILE.particleScale)
-      : LAB.count.desktop;
+    const cpu = mobile ? Math.floor(LAB.count.desktop * MOBILE.particleScale) : LAB.count.desktop;
     setLabCount(gpu && cap.tier ? cap.tier.count : cpu);
   }, [gpu, cap.tier, mobile, setLabCount]);
 

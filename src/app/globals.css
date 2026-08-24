@@ -361,6 +361,31 @@ button {
   }
 }
 
+/**
+ * THE CONSTELLATION READOUT.
+ *
+ * Swapped every time the pointer picks a different node, which on a fast
+ * traverse is several times a second. The fade is short and the travel is tiny
+ * on purpose: anything longer reads as lag between the cursor and the label,
+ * and the whole section depends on those two feeling like one thing.
+ *
+ * No `will-change`. This element changes identity rather than animating
+ * continuously, so promoting it would allocate a fresh layer per node.
+ */
+.readout-in {
+  animation: readout-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes readout-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.35rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* ── Reduced motion ─────────────────────────────────────────────────────────
    Hard-cut to end states. The site must still look designed — not stripped. */
 @media (prefers-reduced-motion: reduce) {

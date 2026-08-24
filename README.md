@@ -72,9 +72,16 @@ scripts/                  brand asset + screenshot generators
 
 **One canvas, one room.** `<SceneRoot />` mounts in the root layout and never
 unmounts. The mark sits at the world origin, the Lab field at `y = -30`, the
-work mocks at `-60`, and each interior page's structure below that. Changing
-section or route flies the camera. Nothing tears down, so there is no white
-flash and no re-initialised GL context.
+work mocks at `-60`, and each interior page's structure below that. The stack
+constellation is the one thing ABOVE the mark, at `+30` — the room descends
+through output and climbs to reach the tools it was made with. Changing section
+or route flies the camera. Nothing tears down, so there is no white flash and no
+re-initialised GL context.
+
+**No environment variables, and no backend.** Every section renders from data
+in the repo. There is nothing to configure before `npm run dev`, no key to
+provision, and no origin in the CSP's `connect-src` other than `'self'` — the
+site makes no cross-origin requests at all.
 
 **Two animation loops, in a proven order.** This used to claim there was one.
 There is not, and the claim was never true — it described an intention.

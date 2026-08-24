@@ -1,8 +1,10 @@
 node_modules
 .next
 out
+# The negation that used to sit here un-ignored a committed .env.example. The
+# site no longer reads a single environment variable, so that file is gone and
+# the exception went with it — anything matching .env* now is genuinely local.
 .env*
-!.env.example
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store

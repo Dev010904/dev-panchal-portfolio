@@ -17,8 +17,13 @@ import type { NextConfig } from 'next';
 const SECURITY_HEADERS = [
   {
     // connect-src is the one that earns its keep: it pins every outbound
-    // request to this origin and the single Supabase project, so a compromised
-    // dependency trying to exfiltrate somewhere else is refused by the browser.
+    // request to this origin and nothing else, so a compromised dependency
+    // trying to exfiltrate somewhere is refused by the browser.
+    //
+    // It used to name a Supabase project as well, for the visitor-trace
+    // section. That section is gone and so is the origin — the site now makes
+    // no cross-origin requests at all, in any section, which is the strongest
+    // form this header can take.
     //
     // 'unsafe-inline' in script-src is a recorded trade-off, not an oversight.
     // Next's App Router inlines its own bootstrap and flight payload, and
@@ -50,8 +55,8 @@ const SECURITY_HEADERS = [
       // is not reliably covered by 'self' across browsers, so it is named
       // explicitly — and only in development, where it exists.
       process.env.NODE_ENV === 'development'
-        ? "connect-src 'self' ws: wss: https://gjeqokcbrhnkmrsmgxge.supabase.co"
-        : "connect-src 'self' https://gjeqokcbrhnkmrsmgxge.supabase.co",
+        ? "connect-src 'self' ws: wss:"
+        : "connect-src 'self'",
       "worker-src 'self' blob:",
       "child-src 'self' blob:",
       "media-src 'self'",

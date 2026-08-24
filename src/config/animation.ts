@@ -136,16 +136,17 @@ export const LAB_ORIGIN_Y = -30;
 export const WORK_ORIGIN_Y = -60;
 
 /**
- * THE VISITOR TRACE sits ABOVE the mark, and everything else on this site sits
+ * THE CONSTELLATION sits ABOVE the mark, and everything else on this site sits
  * below it.
  *
- * Not arbitrary. The room descends through the author's own material — the
- * mark, the Lab, the work, the interior documentation at -90 to -180 — and
- * this is the one region that is not his. Travelling UP to reach it is the
- * only structural way the scene can say that, and the camera passes the mark
- * on the way, which frames the thing everyone is drawing around.
+ * Not arbitrary. The room descends through the OUTPUT — the mark, the Lab, the
+ * work, the interior documentation at -90 to -180. This is the one region that
+ * is not output at all: it is the toolset the rest of the room was made with.
+ * Travelling UP to reach it is the only structural way the scene can say that,
+ * and the camera passes the mark on the way, which frames the thing all of it
+ * was used to build.
  */
-export const TRACE_ORIGIN_Y = 30;
+export const CONSTELLATION_ORIGIN_Y = 30;
 
 /**
  * Interior pages get their own region too. Routing does not unmount the scene;
@@ -282,37 +283,27 @@ export const SHOTS = {
    * across, and dropping it 0.55 keeps it out of the headline's line.
    */
   /**
-   * TRACE — inside the accumulated structure, not looking at it from outside.
+   * CONSTELLATION — the whole structure in frame, from outside.
    *
-   * The radius is deliberately short. Every previous visitor's stroke is a
-   * filament in one shared volume, and a wide establishing shot turns that
-   * into a small object on a dark field — a diagram of the idea rather than
-   * the thing. Sitting close enough that filaments pass on both sides of the
-   * camera is what makes it read as somewhere you are, which is the whole
-   * claim of the section.
+   * The temptation with a node graph is to fly the camera inside it, because
+   * that is the shot that looks impressive in a capture. It is the wrong shot
+   * for this section, for a reason that is specific rather than aesthetic:
+   * this graph's whole content is its TOPOLOGY. Which nodes are central, which
+   * cluster is dense, which two clusters are bridged by exactly one edge —
+   * none of that survives being inside the volume, where every graph reduces
+   * to the same tangle of lines passing the lens.
    *
-   * Elevation is slightly negative so the structure hangs overhead and the
-   * mark is below and behind, in the direction the camera just came from.
+   * So the radius is set to hold all four lobes inside the frame with air
+   * around them, and the section earns its close-ups a different way: the
+   * pointer pulls a single node forward and the DOM prints what it is.
+   *
+   * The slight negative azimuth turns the ring a few degrees off square, so
+   * the far clusters are legibly behind the near ones rather than reading as
+   * a flat wheel drawn on the screen.
    */
-  trace: {
-    /**
-     * The first version of this sat at radius 5.6, INSIDE the structure, on
-     * the argument that filaments passing either side of the camera is what
-     * makes it read as somewhere you are rather than an object you look at.
-     *
-     * Looked at on screen with 41 strokes in the table, that was wrong. Inside
-     * the volume it is a full-frame tangle of lines: it buries the section's
-     * own text, it reads as a screensaver rather than as a record, and it gets
-     * strictly worse as the archive grows — which is the one direction this
-     * section is guaranteed to move in. A section whose art direction degrades
-     * with success is broken.
-     *
-     * From outside, the same geometry reads as a single accumulating body, the
-     * ember of the newest stroke is findable, and 200 strokes is denser rather
-     * than louder.
-     */
-    orbit: [11.2, -22, 6] as [number, number, number],
-    target: [0, TRACE_ORIGIN_Y, 0] as [number, number, number],
+  constellation: {
+    orbit: [13.4, -24, 7] as [number, number, number],
+    target: [0, CONSTELLATION_ORIGIN_Y, 0] as [number, number, number],
     duration: 1.9,
     ease: EASE.move,
     presence: 0.2,
@@ -1221,36 +1212,88 @@ export const LENS = {
  * rather than rewriting the simulation. See docs/WEBGPU-MIGRATION.md.
  */
 /**
- * THE VISITOR TRACE.
+ * THE CONSTELLATION.
  *
- * Every number that decides how the shared structure looks and how much of it
- * is kept. The caps are not tuning knobs — they are the contract with the
- * database, and `lib/trace.ts` enforces the same ones before it ever posts.
+ * Every number that decides how the stack graph is laid out and how it answers
+ * the pointer. The layout is fully deterministic — same nodes in, same
+ * positions out, on every machine and every reload. That is a requirement
+ * rather than a nicety: a graph that reshuffles itself per visit cannot be
+ * screenshotted, cannot be described in writing, and quietly tells the reader
+ * that the arrangement means nothing.
  */
-export const TRACE = {
-  /** Hard cap per stroke. The table has a CHECK constraint at this number. */
-  maxPoints: 120,
-  /** How many strokes are fetched and drawn. Older ones are not kept. */
-  renderLimit: 200,
-  /** Minimum points before a gesture counts as a stroke rather than a click. */
-  minPoints: 6,
-  /** World size of the region a normalised stroke is mapped into. */
-  extent: 2.6,
-  /** How far strokes are spread through depth, so it is a volume not a wall. */
-  depth: 2.2,
-  /** Slow rotation of the whole structure, radians/sec. */
-  spin: 0.045,
-  /** Cursor parallax — how far the structure leans toward the pointer. */
-  parallax: 0.16,
+export const CONSTELLATION = {
+  /** Radius of the ring the four cluster lobes are placed around. */
+  ringRadius: 4.1,
   /**
-   * The oldest stroke's opacity relative to the newest. NEVER zero: the point
-   * of the section is that nobody who drew is removed, only layered, and a
-   * stroke that fades to nothing has been deleted with extra steps.
+   * How far the ring is tipped out of the horizontal, radians. Dead flat reads
+   * as a pie chart floating in space; this is enough to say "volume" without
+   * hiding the back half behind the front.
    */
-  oldestOpacity: 0.16,
-  /** The stroke being drawn right now, before it is committed. */
-  pendingOpacity: 0.95,
+  ringTilt: 0.34,
+  /** Inner and outer radius of a lobe. A node's weight picks its distance. */
+  coreRadius: 0.55,
+  lobeRadius: 2.05,
+  /**
+   * Depth spread within a lobe. Lower than the lobe radius on purpose: the
+   * clusters should read as flattened discs seen at an angle, which is what
+   * lets you count the nodes in one, rather than as spheres, which is what
+   * makes every node graph look like every other node graph.
+   */
+  lobeDepth: 1.15,
+
+  /** Point size in pixels at unit distance, before weight and focus scaling. */
+  nodeSize: 26,
+  /** Multiplier applied across the weight range, smallest to largest node. */
+  sizeRange: [0.52, 1] as [number, number],
+
+  /** Slow rotation of the whole structure, radians/sec. */
+  spin: 0.055,
+  /** How far the structure leans toward the pointer. */
+  parallax: 0.18,
+  /** Fade in and out with the section. The k in exp(-k·dt). */
   fadeRate: 2.2,
+
+  /**
+   * FOCUS — the node nearest the pointer, picked in SCREEN space.
+   *
+   * Not a raycast. A raycast against 27 point sprites needs real geometry to
+   * hit, so it would mean carrying an invisible mesh per node purely to be
+   * hittable, and it answers the wrong question anyway: what the visitor means
+   * is "the node I am pointing at", which is a 2D distance on the screen they
+   * are actually looking at, not a 3D intersection with a billboard.
+   */
+  focus: {
+    /** Pick radius as a fraction of viewport height. */
+    radius: 0.11,
+    /** How fast a node's own highlight rises and falls. The k in exp(-k·dt). */
+    rate: 7,
+    /** How far a focused node lifts toward the camera, world units. */
+    lift: 0.42,
+    /** Size multiplier at full focus. */
+    grow: 1.7,
+  },
+
+  /**
+   * Edges are drawn dimmer than nodes by a wide margin. At 30-odd edges the
+   * lines are the majority of the ink on screen, and matching them to the node
+   * brightness turns the section into a ball of wire with the labels lost
+   * inside it. They are context; the nodes are the content.
+   */
+  edge: {
+    opacity: 0.3,
+    /** Opacity of an edge touching the focused node. */
+    activeOpacity: 1,
+  },
+
+  /**
+   * MOBILE has no pointer, so the section would be inert — a still image of a
+   * graph with a caption that never changes. Instead the focus walks the nodes
+   * on its own, dwelling on each one long enough to read the line.
+   *
+   * It only runs on touch. On a desktop machine an auto-advancing focus would
+   * fight the cursor for control of the same readout.
+   */
+  autoFocusMs: 2600,
 } as const;
 
 export const LAB_GPU = {
