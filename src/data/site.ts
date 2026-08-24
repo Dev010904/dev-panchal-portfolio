@@ -14,7 +14,16 @@ export const site = {
   role: 'Web Developer',
   title: 'Dev Panchal — Web Developer & 3D Web Experiences',
   description: 'Websites and interactive 3D experiences built with Three.js, WebGL and GSAP.',
-  url: 'https://devpanchal04.netlify.app',
+  /**
+   * The canonical origin, and it has to be the real one.
+   *
+   * This single value feeds the canonical link, every Open Graph and Twitter
+   * URL, the JSON-LD Person, and the Sitemap line in robots.txt. Pointing it at
+   * a host the site no longer lives on is not cosmetic: it tells crawlers the
+   * real pages are duplicates of somewhere else, and it hands social previews
+   * a domain that may stop resolving.
+   */
+  url: 'https://dev-panchal.vercel.app',
   whatsapp: {
     /**
      * Display form only. Grouped +91 XXXXX XXXXX — the standard Indian
