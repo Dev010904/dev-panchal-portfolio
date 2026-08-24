@@ -86,7 +86,17 @@ function buildLayout(): Float32Array {
     const a = (ci / CLUSTERS.length) * Math.PI * 2 + Math.PI / 4;
     const cx = Math.cos(a) * C.ringRadius;
     const cy = Math.sin(a) * C.ringRadius;
-    const cz = Math.cos(a * 2) * C.ringRadius * C.ringTilt;
+    /**
+     * SIN, not cos. With the quarter-turn offset above, `2a` lands on 90°,
+     * 270°, 450° and 630° — every one an odd multiple of 90°, where cosine is
+     * zero. So `cos(2a)` evaluated to 0 for all four lobes and `ringTilt` was
+     * silently doing nothing at all: the ring was perfectly flat in Z and the
+     * only depth in the structure came from the per-node jitter.
+     *
+     * Sine of the same angles gives +1, -1, +1, -1 — which is the alternating
+     * near/far arrangement this was always meant to produce.
+     */
+    const cz = Math.sin(a * 2) * C.ringRadius * C.ringTilt;
 
     // Heaviest first, so the load-bearing tool takes the innermost slot and
     // the cluster reads outward from its own centre of gravity.
@@ -302,8 +312,12 @@ export function StackConstellation() {
     // this is the whole reason the section costs nothing on the hero.
     if (opacity.current <= 0.004) return;
 
-    if (!s.reducedMotion) spin.current += CONSTELLATION.spin * dt;
-    group.current.rotation.y = spin.current;
+    // Accumulates seconds, not angle. The yaw is a sine of it, so reduced
+    // motion simply stops advancing the clock and the structure holds at
+    // whatever angle it had reached rather than snapping back to square.
+    if (!s.reducedMotion) spin.current += dt;
+    group.current.rotation.y =
+      Math.sin(spin.current * CONSTELLATION.sway.rate) * CONSTELLATION.sway.amplitude;
 
     const px = s.isMobile || s.reducedMotion ? 0 : s.pointer[0];
     const py = s.isMobile || s.reducedMotion ? 0 : s.pointer[1];

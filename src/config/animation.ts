@@ -1288,8 +1288,29 @@ export const CONSTELLATION = {
    */
   fitMargin: 0.86,
 
-  /** Slow rotation of the whole structure, radians/sec. */
-  spin: 0.055,
+  /**
+   * A SLOW SWAY, NOT A SPIN — and the difference is not stylistic.
+   *
+   * The visitor trace that used to occupy this slot rotated continuously about
+   * Y, which was right for it: it was a roughly spherical tangle of filaments,
+   * so every angle looked equally like itself. Inheriting that here was a bug.
+   *
+   * This structure is a ring lying in the XY plane. Rotating it about the
+   * vertical axis turns it EDGE-ON, so twice per revolution the entire graph
+   * collapsed into a narrow vertical line — which is exactly what it was doing
+   * on the deployed site, and it read as a rendering fault rather than as
+   * motion.
+   *
+   * Oscillating instead of revolving keeps the yaw inside a range where the
+   * ring always faces the camera, while still parallaxing the near and far
+   * lobes against each other enough to say "this is a volume". Amplitude is in
+   * radians — 0.3 is about 17 degrees either way.
+   */
+  sway: {
+    amplitude: 0.3,
+    /** Radians/sec through the sine, so the full cycle is a shade under 30s. */
+    rate: 0.22,
+  },
   /** How far the structure leans toward the pointer. */
   parallax: 0.18,
   /** Fade in and out with the section. The k in exp(-k·dt). */
