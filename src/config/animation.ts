@@ -1222,8 +1222,25 @@ export const LENS = {
  * that the arrangement means nothing.
  */
 export const CONSTELLATION = {
-  /** Radius of the ring the four cluster lobes are placed around. */
-  ringRadius: 4.1,
+  /**
+   * Radius of the ring the four cluster lobes are placed around.
+   *
+   * SIZED AGAINST THE SHOT, NOT PICKED. At fov 34 and the constellation shot's
+   * radius of 13.4, the visible height at the origin is
+   *
+   *     2 · 13.4 · tan(17°) = 8.19 world units
+   *
+   * The first values here put the structure's outer radius at 4.1 + 2.05 =
+   * 6.15, so it spanned 12.3 units against a frame 8.19 tall — a full 50%
+   * outside the viewport. On screen that read as scattered dots with lines
+   * running off every edge, and the four clusters were not resolvable as
+   * clusters at all, which is the one thing the section has to communicate.
+   *
+   * `ringRadius + lobeRadius` is now 2.84, so the structure spans 5.68 and
+   * fills about 69% of the frame height with air around it. Anything that
+   * changes the shot radius or the fov has to come back here.
+   */
+  ringRadius: 1.9,
   /**
    * How far the ring is tipped out of the horizontal, radians. Dead flat reads
    * as a pie chart floating in space; this is enough to say "volume" without
@@ -1231,20 +1248,45 @@ export const CONSTELLATION = {
    */
   ringTilt: 0.34,
   /** Inner and outer radius of a lobe. A node's weight picks its distance. */
-  coreRadius: 0.55,
-  lobeRadius: 2.05,
+  coreRadius: 0.25,
+  lobeRadius: 0.94,
   /**
    * Depth spread within a lobe. Lower than the lobe radius on purpose: the
    * clusters should read as flattened discs seen at an angle, which is what
    * lets you count the nodes in one, rather than as spheres, which is what
    * makes every node graph look like every other node graph.
    */
-  lobeDepth: 1.15,
+  lobeDepth: 0.53,
 
-  /** Point size in pixels at unit distance, before weight and focus scaling. */
-  nodeSize: 26,
+  /**
+   * Point size before weight, focus and distance scaling.
+   *
+   * NOT a pixel count. The vertex shader divides by view depth, so at the shot
+   * distance of 13.4 the on-screen size is `nodeSize · 3.4 / 13.4`, i.e. about
+   * a quarter of this number in CSS pixels. 26 therefore drew 6.6px nodes, and
+   * inside a 6.6px sprite the solid core is barely two pixels — which is why
+   * the first pass rendered as dust with no readable weight difference between
+   * Three.js and drei.
+   *
+   * 86 puts a full-weight node at roughly 22px and the lightest at 15px, which
+   * is the range where the core-and-ring construction is actually legible.
+   */
+  nodeSize: 86,
   /** Multiplier applied across the weight range, smallest to largest node. */
   sizeRange: [0.52, 1] as [number, number],
+
+  /**
+   * FIT-TO-FRAME. The structure is sized above for a wide desktop viewport,
+   * where height is the binding constraint. On a portrait phone it is width:
+   * at aspect 0.46 the visible width is only 3.8 units against a structure
+   * spanning 5.68, so a third of the graph would sit outside the screen.
+   *
+   * Rather than a second set of mobile constants that can drift out of step
+   * with these, the scene measures the frustum at the group's actual distance
+   * every frame and scales to fit, never above 1. That is correct for phones,
+   * tablets, split-screen windows and any viewport nobody thought to test.
+   */
+  fitMargin: 0.86,
 
   /** Slow rotation of the whole structure, radians/sec. */
   spin: 0.055,

@@ -27,7 +27,8 @@ void main() {
   float a = mix(uEdgeOpacity, uEdgeActive, lead);
   vec3 col = mix(uColor, uAccent, lead * 0.85);
 
-  float fog = 1.0 - smoothstep(6.0, 18.0, vDepth) * 0.6;
+  // Same range as constellation.frag, and for the same reason. Keep them together.
+  float fog = 1.0 - smoothstep(10.5, 17.0, vDepth) * 0.5;
 
   fragColor = vec4(col, a * uOpacity * fog);
 }

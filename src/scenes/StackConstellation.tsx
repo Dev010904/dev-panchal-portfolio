@@ -123,6 +123,25 @@ const NEIGHBOURS: number[][] = (() => {
  *  allocations at 60fps, which is the kind of thing that shows up as GC saw-
  *  tooth in a profile and as nothing at all in a screenshot. */
 const scratch = new THREE.Vector3();
+const originScratch = new THREE.Vector3();
+
+/**
+ * The structure's real outer radius, measured from the layout rather than
+ * assumed from the config.
+ *
+ * `ringRadius + lobeRadius` is the intended bound, but the depth jitter pushes
+ * some nodes further out and the true extent is what the fit-to-frame scale has
+ * to divide by. Deriving it means adding a node, retuning a radius or changing
+ * the jitter cannot silently leave part of the graph off-screen.
+ */
+function measureExtent(pos: Float32Array): number {
+  let max = 0;
+  for (let i = 0; i < pos.length; i += 3) {
+    const d = Math.hypot(pos[i], pos[i + 1], pos[i + 2]);
+    if (d > max) max = d;
+  }
+  return max || 1;
+}
 
 export function StackConstellation() {
   const group = useRef<THREE.Group>(null!);
@@ -143,6 +162,7 @@ export function StackConstellation() {
   const autoIndex = useRef(0);
 
   const base = useMemo(() => buildLayout(), []);
+  const extent = useMemo(() => measureExtent(base), [base]);
 
   const nodeGeom = useMemo(() => {
     const g = new THREE.BufferGeometry();
@@ -190,6 +210,7 @@ export function StackConstellation() {
       uColor: { value: new THREE.Color('#8a8a85') },
       uAccent: { value: new THREE.Color('#ff5a1f') },
       uPointSize: { value: CONSTELLATION.nodeSize },
+      uFit: { value: 1 },
       uPixelRatio: { value: 1 },
       uSizeRange: {
         value: new THREE.Vector2(CONSTELLATION.sizeRange[0], CONSTELLATION.sizeRange[1]),
@@ -289,6 +310,29 @@ export function StackConstellation() {
     const lean = 1 - Math.exp(-2.4 * dt);
     group.current.rotation.x += (-py * CONSTELLATION.parallax - group.current.rotation.x) * lean;
     group.current.position.x += (px * CONSTELLATION.parallax * 2 - group.current.position.x) * lean;
+
+    /**
+     * FIT TO FRAME.
+     *
+     * Measured against the live frustum at the group's real distance, so the
+     * structure fills the same fraction of the screen on a 21:9 desktop and a
+     * portrait phone. `min(halfH, halfW)` picks whichever axis is actually
+     * binding — height on a wide window, width on a narrow one — and the scale
+     * is never allowed above 1, so a very tall viewport does not inflate the
+     * graph past the size it was designed at.
+     */
+    const cam = state.camera as THREE.PerspectiveCamera;
+    group.current.getWorldPosition(originScratch);
+    const dist = cam.position.distanceTo(originScratch);
+    const halfH = dist * Math.tan((cam.fov * Math.PI) / 360);
+    const halfW = halfH * (state.size.width / Math.max(state.size.height, 1));
+    const fit = Math.min(1, (Math.min(halfH, halfW) * CONSTELLATION.fitMargin) / extent);
+    group.current.scale.setScalar(fit);
+
+    // Nodes shrink with the structure, but only halfway. Scaling them fully
+    // would make a phone's nodes genuinely too small to aim at; not scaling
+    // them at all would let the sprites overlap once the lobes tighten.
+    nodeUniforms.uFit.value = 0.5 + 0.5 * fit;
 
     // ── Pick ────────────────────────────────────────────────────────────────
     let target = -1;

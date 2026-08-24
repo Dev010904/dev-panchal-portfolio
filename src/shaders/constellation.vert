@@ -24,6 +24,7 @@ uniform float uPixelRatio;
 uniform vec2  uSizeRange;
 uniform float uLift;
 uniform float uGrow;
+uniform float uFit;      // fit-to-frame scale, already softened by the scene
 
 varying float vGlow;
 varying float vWeight;
@@ -56,7 +57,7 @@ void main() {
   // Perspective-correct, with a floor so a node in the far lobe never drops to
   // a sub-pixel sprite and starts flickering as the structure turns.
   gl_PointSize = max(
-    uPointSize * uPixelRatio * scale * (3.4 / max(vDepth, 0.1)),
+    uPointSize * uPixelRatio * scale * uFit * (3.4 / max(vDepth, 0.1)),
     1.5 * uPixelRatio
   );
 }

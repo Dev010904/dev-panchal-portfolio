@@ -48,10 +48,18 @@ void main() {
   // it reach the ember, which is what keeps "focused" unambiguous.
   col *= mix(mix(0.55, 1.0, vWeight), 1.5, vGlow);
 
-  // Depth fade, so the far lobe sits behind rather than competing. Never to
-  // zero: a cluster that disappears when it rotates away has been deleted for
-  // half of every revolution.
-  float fog = 1.0 - smoothstep(6.0, 18.0, vDepth) * 0.55;
+  /**
+   * Depth fade. The range is set against where the structure ACTUALLY sits:
+   * the camera is 13.4 out and the graph spans about 2.8, so every vertex
+   * falls between roughly 10.5 and 16.5. The first version ramped from 6 to
+   * 18, which put the whole structure deep inside the fade and dimmed the
+   * entire section to about 63% for no reason anyone could see — it just
+   * looked washed out and slightly broken.
+   *
+   * Never fades to zero: a cluster that vanishes as it rotates away has been
+   * deleted for half of every revolution.
+   */
+  float fog = 1.0 - smoothstep(10.5, 17.0, vDepth) * 0.45;
 
   fragColor = vec4(col, mask * uOpacity * fog);
 }
