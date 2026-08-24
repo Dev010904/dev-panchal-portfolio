@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { MENU, TRANSITION } from '@/config/animation';
 import { PAGES } from '@/data/pages';
-import { EMAIL_PARTS, NAV_SECTIONS, SOCIALS, site } from '@/data/site';
+import { EMAIL_PARTS, NAV_SECTIONS, SOCIALS, resume, site } from '@/data/site';
 import { gsap, useGsap } from '@/lib/gsap';
 import { getLenis } from '@/components/SmoothScroll';
 import { useTicker } from '@/lib/useTicker';
@@ -44,7 +44,14 @@ function Nav() {
       gsap.fromTo(
         '[data-nav-item]',
         { autoAlpha: 0, y: -12 },
-        { autoAlpha: 1, y: 0, duration: 0.9, stagger: 0.08, ease: 'power3.out', delay: 0.35 },
+        {
+          autoAlpha: 1,
+          y: 0,
+          duration: 0.9,
+          stagger: 0.08,
+          ease: 'power3.out',
+          delay: 0.35,
+        },
       );
     },
     [entered],
@@ -103,11 +110,15 @@ function Nav() {
           <span aria-hidden="true" className="flex flex-col gap-[3px]">
             <span
               className="block h-px w-3.5 bg-current transition-transform duration-500"
-              style={{ transform: menuOpen ? 'translateY(2px) rotate(45deg)' : 'none' }}
+              style={{
+                transform: menuOpen ? 'translateY(2px) rotate(45deg)' : 'none',
+              }}
             />
             <span
               className="block h-px w-3.5 bg-current transition-transform duration-500"
-              style={{ transform: menuOpen ? 'translateY(-2px) rotate(-45deg)' : 'none' }}
+              style={{
+                transform: menuOpen ? 'translateY(-2px) rotate(-45deg)' : 'none',
+              }}
             />
           </span>
         </button>
@@ -187,7 +198,12 @@ function MenuOverlay() {
       // screen — with no error, and a transform that looks almost right.
       if (!settled.current) {
         settled.current = true;
-        gsap.set(el, { x: 0, xPercent: 100, visibility: 'hidden', pointerEvents: 'none' });
+        gsap.set(el, {
+          x: 0,
+          xPercent: 100,
+          visibility: 'hidden',
+          pointerEvents: 'none',
+        });
         if (!menuOpen) return;
       }
 
@@ -282,15 +298,21 @@ function MenuOverlay() {
         {/* Interior pages continue the same stack. They are a different kind of
             destination — a whole page rather than a scroll position — so they
             sit below a hairline instead of being interleaved. */}
-        <span data-menu-item className="my-[clamp(0.6rem,1.6vh,1.1rem)] block h-px w-full bg-[#0a0a0c]/12" />
+        <span
+          data-menu-item
+          className="my-[clamp(0.6rem,1.6vh,1.1rem)] block h-px w-full bg-[#0a0a0c]/12"
+        />
 
         {/* `credentials` is a static route rather than a `data/pages.ts`
             entry — see app/credentials/page.tsx — so it is listed alongside
             them rather than through the same map. */}
-        {[...PAGES.map((p) => ({ slug: p.slug, label: p.label })), {
-          slug: 'credentials',
-          label: 'Credentials',
-        }].map((p) => (
+        {[
+          ...PAGES.map((p) => ({ slug: p.slug, label: p.label })),
+          {
+            slug: 'credentials',
+            label: 'Credentials',
+          },
+        ].map((p) => (
           <Link
             key={p.slug}
             data-menu-item
@@ -315,6 +337,22 @@ function MenuOverlay() {
             suppressHydrationWarning
           >
             {address ?? ' '}
+          </a>
+        </div>
+
+        {/* The CV sits above SOCIAL and below CONTACT, matching the ranking in
+            the contact section. Anyone who opened the menu looking for it is
+            looking for it here, not three links into a social row. */}
+        <div data-menu-item className="flex flex-col gap-2">
+          <span className="t-label text-[#0a0a0c]/45">RESUME</span>
+          <a
+            href={resume.href}
+            download={resume.filename}
+            onClick={close}
+            className="w-fit text-[clamp(0.95rem,1.15vw,1.15rem)] text-[#0a0a0c] transition-colors hover:text-[var(--color-accent)]"
+            tabIndex={tab}
+          >
+            Download the CV — PDF · {resume.size}
           </a>
         </div>
 

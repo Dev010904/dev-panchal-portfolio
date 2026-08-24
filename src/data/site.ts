@@ -13,8 +13,7 @@ export const site = {
   name: 'Dev Panchal',
   role: 'Web Developer',
   title: 'Dev Panchal — Web Developer & 3D Web Experiences',
-  description:
-    'Websites and interactive 3D experiences built with Three.js, WebGL and GSAP.',
+  description: 'Websites and interactive 3D experiences built with Three.js, WebGL and GSAP.',
   url: 'https://devpanchal04.netlify.app',
   whatsapp: {
     /**
@@ -66,6 +65,31 @@ export const site = {
 } as const;
 
 /**
+ * THE CV, as a file.
+ *
+ * Deliberately not folded into SOCIALS. A resume is a different kind of thing
+ * from a profile link: it is the artefact a recruiter forwards internally, it
+ * is what gets attached to an email, and it is the one link on the page that
+ * ends in a file rather than another website. Filing it between GitHub and
+ * Instagram would rank it below both.
+ *
+ * The size is printed next to the link on purpose. An unlabelled PDF on mobile
+ * data is a gamble, and 68 KB is small enough that saying so removes the only
+ * reason someone would hesitate.
+ */
+export const resume = {
+  href: '/Dev_Panchal_Resume.pdf',
+  /** Rounded from the real file. Update this if the PDF is replaced. */
+  size: '68 KB',
+  /**
+   * What the browser saves it as. The file in `public/` is named for the repo;
+   * this is named for the person receiving it, who will have it in a downloads
+   * folder next to fifty other resumes.
+   */
+  filename: 'Dev-Panchal-Resume.pdf',
+} as const;
+
+/**
  * The social block, in the order it is shown everywhere.
  *
  * Email is not in here — it is the primary channel and is always set larger and
@@ -77,7 +101,11 @@ export const SOCIALS = [
   { key: 'whatsapp', label: 'WhatsApp', href: site.whatsapp.href },
   { key: 'github', label: site.github.display, href: site.github.href },
   { key: 'linkedin', label: site.linkedin.display, href: site.linkedin.href },
-  { key: 'instagram', label: site.instagram.display, href: site.instagram.href },
+  {
+    key: 'instagram',
+    label: site.instagram.display,
+    href: site.instagram.href,
+  },
 ] as const;
 
 export const NAV_SECTIONS = [

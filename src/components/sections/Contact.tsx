@@ -2,7 +2,7 @@
 
 import { useRef } from 'react';
 
-import { site } from '@/data/site';
+import { resume, site } from '@/data/site';
 import { gsap, useGsap } from '@/lib/gsap';
 import { useSectionShot } from '@/components/useSectionShot';
 import { Email } from '@/components/ui/Email';
@@ -91,7 +91,13 @@ export function Contact() {
           const dist = Math.hypot(dx, dy);
           const radius = 260;
           if (dist > radius) {
-            gsap.to(ch, { x: 0, y: 0, duration: 0.9, ease: 'power2.out', overwrite: 'auto' });
+            gsap.to(ch, {
+              x: 0,
+              y: 0,
+              duration: 0.9,
+              ease: 'power2.out',
+              overwrite: 'auto',
+            });
             continue;
           }
           const force = (1 - dist / radius) ** 2;
@@ -106,7 +112,13 @@ export function Contact() {
       };
 
       const onLeave = () =>
-        gsap.to(chars, { x: 0, y: 0, duration: 1, ease: 'elastic.out(1, 0.6)', stagger: 0.01 });
+        gsap.to(chars, {
+          x: 0,
+          y: 0,
+          duration: 1,
+          ease: 'elastic.out(1, 0.6)',
+          stagger: 0.01,
+        });
 
       el.addEventListener('pointermove', onMove);
       el.addEventListener('pointerleave', onLeave);
@@ -141,11 +153,7 @@ export function Contact() {
           <span className="sr-only">Let&apos;s build</span>
           <span aria-hidden="true" className="t-display line-mask">
             {Array.from("LET'S BUILD").map((ch, i) => (
-              <span
-                key={i}
-                data-headline-char
-                className="inline-block will-change-transform"
-              >
+              <span key={i} data-headline-char className="inline-block will-change-transform">
                 {ch === ' ' ? ' ' : ch}
               </span>
             ))}
@@ -155,6 +163,12 @@ export function Contact() {
         <div data-contact-reveal className="col-span-12 opacity-0 lg:col-span-10">
           <span className="t-label mb-4 block">EMAIL — PREFERRED</span>
           <Email />
+        </div>
+
+        {/* Directly under the email, above the social row, because those are
+            the two things a client or a recruiter actually came for. */}
+        <div data-contact-reveal className="col-span-12 opacity-0 lg:col-span-10">
+          <ResumeLink />
         </div>
 
         {/*
@@ -190,15 +204,50 @@ export function Contact() {
   );
 }
 
-function ContactLink({
-  label,
-  value,
-  href,
-}: {
-  label: string;
-  value: string;
-  href: string;
-}) {
+/**
+ * THE CV.
+ *
+ * `download` rather than a plain link, so it lands in the downloads folder
+ * under a human filename instead of opening the browser's PDF viewer in place
+ * and losing the page the visitor was reading. Same tab, no `target`, because
+ * a download does not navigate — adding `_blank` would flash an empty tab open
+ * and closed on every click in Chrome.
+ *
+ * The size is stated. An unlabelled PDF is a gamble on mobile data, and this
+ * one is small enough that saying so is purely reassuring.
+ */
+function ResumeLink() {
+  const ref = useCursorTarget<HTMLAnchorElement>();
+
+  return (
+    <a
+      ref={ref}
+      href={resume.href}
+      download={resume.filename}
+      className="group inline-flex flex-col gap-3"
+    >
+      <span className="t-label">RESUME — PDF · {resume.size}</span>
+      <span className="flex items-baseline gap-3">
+        <SplitText
+          text="Download the CV"
+          className="text-[clamp(1.1rem,2.4vw,1.9rem)] font-[500] tracking-[-0.02em] text-[var(--color-fg)]"
+        />
+        <span
+          aria-hidden="true"
+          className="t-mono text-[var(--color-fg-dim)] transition-colors group-hover:text-[var(--color-accent)]"
+        >
+          ↓
+        </span>
+      </span>
+      <span
+        aria-hidden="true"
+        className="block h-px w-full origin-left bg-[var(--color-rule)] transition-colors duration-500 group-hover:bg-[var(--color-accent)]"
+      />
+    </a>
+  );
+}
+
+function ContactLink({ label, value, href }: { label: string; value: string; href: string }) {
   const ref = useCursorTarget<HTMLAnchorElement>();
 
   return (
