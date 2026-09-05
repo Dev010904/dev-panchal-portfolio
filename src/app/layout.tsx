@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter_Tight, JetBrains_Mono } from 'next/font/google';
+import { Analytics } from '@vercel/analytics/next';
 
 import './globals.css';
 import { Chrome } from '@/components/Chrome';
@@ -138,6 +139,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             {children}
           </main>
         </SmoothScroll>
+        <Analytics />
       </body>
     </html>
   );
