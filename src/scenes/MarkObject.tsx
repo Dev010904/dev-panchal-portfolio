@@ -104,6 +104,16 @@ export function MarkObject({
     [parts, materials],
   );
 
+  /**
+   * Each clone's authored glow, so the detonation flare can scale it rather
+   * than overwrite it — the ember's graded emissive is tuned, and a flare that
+   * wrote an absolute value would leave it wrong after the first blast.
+   */
+  const baseEmissive = useMemo(
+    () => solidMats.map((m) => (m as THREE.MeshStandardMaterial).emissiveIntensity ?? 0),
+    [solidMats],
+  );
+
   const edgeMats = useMemo(() => parts.map(() => createEdgeMaterial()), [parts]);
   const ghostMats = useMemo(() => parts.map(() => createGhostMaterial()), [parts]);
   /**
@@ -531,6 +541,13 @@ export function MarkObject({
       const solidOpacity = bodyOpacity * (1 - partGlass);
       m.opacity = solidOpacity;
       m.visible = solidOpacity > 0.01;
+
+      // The inlay burns white-hot at the detonation and cools with the flash.
+      // `flash` is 0 at rest, so this writes the authored value back exactly.
+      if (isEmber) {
+        (m as THREE.MeshStandardMaterial).emissiveIntensity =
+          baseEmissive[i] * (1 + blastHandle.flash * BLAST.fx.flash.ember);
+      }
 
       // The glass twin rides the same transform. Hidden below the threshold
       // rather than left at opacity ~0, because a visible transmissive

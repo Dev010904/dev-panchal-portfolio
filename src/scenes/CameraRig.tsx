@@ -4,8 +4,8 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 
-import { CAMERA, DECONSTRUCTION, SHOTS, type ShotName } from '@/config/animation';
-import { markHandles } from '@/scenes/handles';
+import { BLAST, CAMERA, DECONSTRUCTION, SHOTS, type ShotName } from '@/config/animation';
+import { blastHandle, markHandles } from '@/scenes/handles';
 import { sceneState } from '@/store/scene';
 
 /**
@@ -111,6 +111,22 @@ export function CameraRig() {
       target.current.y + r * Math.sin(el),
       target.current.z + r * Math.cos(el) * Math.cos(az),
     );
+
+    // ── Detonation jolt ─────────────────────────────────────────────────────
+    // One hard hit that rings out, applied to the position and not the target,
+    // so the camera is knocked while it keeps looking at the mark. Three
+    // incommensurate sines rather than random numbers: the same shake at 60Hz
+    // and at 144Hz, and no frame-to-frame snapping.
+    const kt = performance.now() / 1000 - blastHandle.kickAt;
+    if (blastHandle.kickAt > 0 && kt >= 0 && kt < 1.5 && !s.reducedMotion) {
+      const J = BLAST.fx.camera;
+      const amp = J.amplitude * Math.exp(-J.decay * kt);
+      const w = J.frequency * Math.PI * 2 * kt;
+      camera.position.x += amp * (Math.sin(w) + 0.5 * Math.sin(w * 2.3 + 1.7));
+      camera.position.y += amp * (Math.sin(w * 1.3 + 0.6) + 0.4 * Math.sin(w * 2.9 + 2.1));
+      camera.position.z += amp * 0.5 * Math.sin(w * 0.9 + 3.3);
+    }
+
     camera.lookAt(target.current);
   });
 

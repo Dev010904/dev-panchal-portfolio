@@ -755,6 +755,94 @@ export const BLAST = {
   drift: { amplitude: 0.17, period: 3.4, spin: 0.09 },
   /** Lab field detonation, driven by the same 0..1 amount. */
   lab: { strength: 2.6, drift: 0.55 },
+
+  /**
+   * THE DETONATION — what the release actually looks like (scenes/BlastFX.tsx).
+   *
+   * The parts flying apart were the whole event, and on their own they read as
+   * an exploded-view animation that happened to be fast: nothing burned,
+   * nothing broke off, and the page shrugged. A real detonation is a sequence
+   * the eye reads in order, and each entry here is one step of it:
+   *
+   *   flash      a white-hot instant: the metal's reflections flare and the
+   *              ember inlay burns bright, then cools
+   *   fireball   a tight hot core — a burn, not a movie explosion
+   *   shockwave  a thin ring racing out; the page is hit when it arrives
+   *   sparks     hot filings, motion-stretched, cooling white → ember → red
+   *   shards     graphite chips breaking off the parts, some still glowing
+   *   smoke      a faint haze left hanging, so it does not end on a clean frame
+   *   camera     one hard jolt that settles
+   *   dom        the page, struck by the wavefront in order of distance
+   *
+   * Palette discipline holds: hot white and the ember are the only colours,
+   * and all of it is gone within three seconds. Nothing here costs a thing at
+   * rest — every mesh is hidden until a detonation and hidden again after.
+   */
+  fx: {
+    /** Seconds; how long the flash takes to die. Multipliers at its peak. */
+    flash: { duration: 0.34, env: 2.6, ember: 6 },
+    /** World units at full size; seconds to burn out. */
+    fireball: { duration: 0.55, size: 1.7 },
+    /** Final radius in world units; seconds to get there; ring width as a fraction of it. */
+    shockwave: { duration: 0.8, radius: 8, width: 0.018, intensity: 1.35 },
+    /**
+     * Hot filings. Speeds in world units/s, lives in seconds. `trail` is the
+     * seconds of travel a streak shows — motion blur, which is what makes a
+     * spark read as fast instead of as a dot. `width` is in CSS pixels.
+     */
+    sparks: {
+      count: 320,
+      countLow: 110,
+      speed: [5, 15] as [number, number],
+      life: [0.45, 1.25] as [number, number],
+      drag: 1.9,
+      gravity: 7.5,
+      trail: 0.05,
+      width: 1.8,
+    },
+    /** Graphite chips. `hot` is the fraction that leaves glowing. Sizes in world units. */
+    shards: {
+      count: 150,
+      countLow: 55,
+      hot: 0.22,
+      speed: [2.2, 8] as [number, number],
+      life: [1.3, 2.4] as [number, number],
+      drag: 0.85,
+      gravity: 6.5,
+      spin: [4, 15] as [number, number],
+      size: [0.025, 0.11] as [number, number],
+      /** Seconds for a hot chip to cool to graphite. */
+      cool: 0.9,
+    },
+    /** The haze. Kept faint: on #08080A, smoke that reads is smoke that lifts the black. */
+    smoke: {
+      count: 16,
+      countLow: 7,
+      life: [1.6, 2.9] as [number, number],
+      size: [0.8, 2.1] as [number, number],
+      rise: 0.35,
+      opacity: 0.2,
+    },
+    /** Camera jolt: world units at the peak, decay per second, shake frequency in Hz. */
+    camera: { amplitude: 0.13, decay: 5.5, frequency: 21 },
+    /**
+     * The page. `waveSpeed` is how fast the wavefront crosses the screen, in
+     * CSS px/s — each element is struck when it arrives, so the nearest copy
+     * moves first and the far corner a beat later. The strike is a damped
+     * spring: `kick` px out, `frequency` Hz, `damping` as a damping ratio, so
+     * it overshoots and settles instead of sliding. `flash` is the peak
+     * opacity of the light thrown across the page.
+     */
+    dom: {
+      waveSpeed: 2600,
+      kick: 58,
+      kickRotate: 5,
+      frequency: 6.5,
+      damping: 0.34,
+      flash: 0.22,
+      flashDecay: 0.4,
+    },
+  },
 } as const;
 
 /**

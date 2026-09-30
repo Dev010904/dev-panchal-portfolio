@@ -38,9 +38,23 @@ import { useScene } from '@/store/scene';
  * displacement costs nothing on the main thread. There is no filter: the blur
  * that used to be here forced a full-page raster on every frame of the blast,
  * which is most of what made the recovery feel like it was dragging.
+ *
+ * THE WAVEFRONT
+ * Every element used to move on the same frame, which reads as the page
+ * being nudged, not as something detonating. Now the shock starts at the
+ * MARK — wherever the press landed, it is the logo that explodes — and each
+ * element is struck when the front reaches it, nearest first. The strike is a
+ * damped spring on top of the held push: out past its rest offset, back, and
+ * settled within a second, which is how a real impact reads. A warm flash is
+ * thrown across the scene layer underneath the type, never over it.
+ *
+ * `data-blast="chrome"` marks page furniture — the header, the rail, the
+ * readout, corner marks. It is shaken like everything else but never faded:
+ * its opacity belongs to its own transitions.
  */
 export function HoldToBlast() {
   const ring = useRef<HTMLDivElement>(null);
+  const flashEl = useRef<HTMLDivElement>(null);
   const reducedMotion = useScene((s) => s.reducedMotion);
   const section = useScene((s) => s.activeSection);
   const structure = useScene((s) => s.structure);
@@ -54,6 +68,9 @@ export function HoldToBlast() {
   // tearing down and rebuilding the timeline every time you cross a section.
   const armedRef = useRef(armed);
   armedRef.current = armed;
+  // Same reason: read at the detonation, never a dependency of the effect.
+  const sectionRef = useRef(section);
+  sectionRef.current = section;
 
   useEffect(() => {
     if (reducedMotion) return;
@@ -100,13 +117,32 @@ export function HoldToBlast() {
     /** True once the hold has completed and the blast has actually fired. */
     let armed = false;
 
-    /** Elements the shockwave displaces. Collected once per press. */
-    let targets: { el: HTMLElement; dx: number; dy: number; falloff: number }[] = [];
+    const D = BLAST.fx.dom;
+    // The strike, as a damped spring: ω from the frequency, the damped ω_d
+    // from the ratio. x(τ) = e^(−ζωτ) · sin(ω_d τ) peaks a quarter period in.
+    const omega = D.frequency * Math.PI * 2;
+    const omegaD = omega * Math.sqrt(1 - D.damping * D.damping);
+    /** Seconds after a detonation the strikes and the flash can still be moving. */
+    const settleSeconds = 1.8;
+
+    /** Elements the shockwave displaces. Collected on press, re-aimed on detonation. */
+    let targets: {
+      el: HTMLElement;
+      dx: number;
+      dy: number;
+      falloff: number;
+      /** `performance.now()` seconds when the front reaches it; Infinity before a detonation. */
+      hit: number;
+      /** ±1, so neighbours do not all twist the same way. */
+      spin: number;
+      /** Page furniture: shaken, never faded. */
+      chrome: boolean;
+    }[] = [];
 
     const clearTargets = () => {
       for (const t of targets) {
         t.el.style.transform = '';
-        t.el.style.opacity = '';
+        if (!t.chrome) t.el.style.opacity = '';
         t.el.style.willChange = '';
       }
       targets = [];
@@ -116,30 +152,54 @@ export function HoldToBlast() {
      * One batched read pass, then one batched write pass. Interleaving the two
      * is what turns a handful of getBoundingClientRect calls into a forced
      * synchronous layout per element, and this runs on the input frame.
+     *
+     * `when` is the detonation time the hits are measured from — Infinity for
+     * the collection on press, when nothing has gone off yet.
      */
-    const collect = (ox: number, oy: number) => {
+    const collect = (ox: number, oy: number, when: number) => {
       const nodes = document.querySelectorAll<HTMLElement>('[data-blast]');
       const max = Math.hypot(window.innerWidth, window.innerHeight);
-      targets = [];
+      const next: typeof targets = [];
+      // A new press while the last strike is still ringing must not cut it
+      // off: without a detonation of its own, an element keeps its old hit.
+      const previous = new Map(targets.map((t) => [t.el, t]));
 
       nodes.forEach((el) => {
         const r = el.getBoundingClientRect();
         if (r.bottom < -200 || r.top > window.innerHeight + 200) return;
+        if (r.width === 0 && r.height === 0) return;
         const dx = r.left + r.width / 2 - ox;
         const dy = r.top + r.height / 2 - oy;
         const len = Math.hypot(dx, dy) || 1;
-        targets.push({
+        const prior = previous.get(el);
+        next.push({
           el,
           dx: dx / len,
           dy: dy / len,
-          // Near the press point things move most. Uniform displacement reads
-          // as the page scrolling rather than as something detonating.
+          // Near the blast things move most. Uniform displacement reads as the
+          // page scrolling rather than as something detonating.
           falloff: 1 - Math.min(len / max, 1) * 0.55,
+          hit: when === Infinity && prior ? prior.hit : when + len / D.waveSpeed,
+          spin: prior ? prior.spin : Math.random() < 0.5 ? -1 : 1,
+          chrome: el.dataset.blast === 'chrome',
         });
       });
 
-      for (const t of targets) t.el.style.willChange = 'transform, opacity';
+      // Anything no longer in range goes back to rest before the swap.
+      const keep = new Set(next.map((t) => t.el));
+      for (const t of targets) {
+        if (keep.has(t.el)) continue;
+        t.el.style.transform = '';
+        if (!t.chrome) t.el.style.opacity = '';
+        t.el.style.willChange = '';
+      }
+      targets = next;
+      for (const t of targets) t.el.style.willChange = t.chrome ? 'transform' : 'transform, opacity';
     };
+
+    /** Where the press landed, CSS px — the fallback origin in the Lab. */
+    let pressX = 0;
+    let pressY = 0;
 
     const onDown = (e: PointerEvent) => {
       // Never hijack a real interaction. The instanceof guard is not paranoia:
@@ -160,7 +220,9 @@ export function HoldToBlast() {
       heldSeconds = 0;
       armed = false;
 
-      collect(e.clientX, e.clientY);
+      pressX = e.clientX;
+      pressY = e.clientY;
+      collect(e.clientX, e.clientY, Infinity);
 
       if (ring.current) {
         ring.current.style.left = `${e.clientX}px`;
@@ -192,6 +254,22 @@ export function HoldToBlast() {
             // for as long as the pointer stays down.
             armed = true;
             target = 1;
+
+            const now = performance.now() / 1000;
+            blastHandle.detonations++;
+            blastHandle.detonatedAt = now;
+
+            // Re-aim the page at the mark: it is the logo that explodes, so
+            // the front starts there, not at the pointer. The Lab has no mark
+            // on screen, and there the press point is the centre.
+            const fromMark = blastHandle.centerValid && sectionRef.current === 'INDEX';
+            const ox = fromMark ? blastHandle.center[0] : pressX;
+            const oy = fromMark ? blastHandle.center[1] : pressY;
+            collect(ox, oy, now);
+            if (flashEl.current) {
+              flashEl.current.style.setProperty('--bx', `${ox}px`);
+              flashEl.current.style.setProperty('--by', `${oy}px`);
+            }
           }
         }
       }
@@ -215,13 +293,26 @@ export function HoldToBlast() {
       if (target === 0 && playhead < 0.001) playhead = 0;
       if (target === 1 && playhead > 0.999) playhead = 1;
 
-      if (playhead === 0 && blastHandle.amount === 0 && blastHandle.shake === 0) {
+      const now = performance.now() / 1000;
+      const sinceDetonation = blastHandle.detonatedAt < 0 ? Infinity : now - blastHandle.detonatedAt;
+      const settling = sinceDetonation < settleSeconds;
+
+      if (playhead === 0 && blastHandle.amount === 0 && blastHandle.shake === 0 && !settling) {
         if (targets.length) clearTargets();
         if (ring.current) ring.current.style.opacity = '0';
+        if (flashEl.current) flashEl.current.style.opacity = '0';
         return;
       }
 
       tl.progress(playhead);
+
+      // ── Flash ──────────────────────────────────────────────────────────────
+      // Thrown across the scene layer, under the type. Instant on, then gone
+      // on the same short exponential as the 3D flash.
+      if (flashEl.current) {
+        const f = settling ? D.flash * Math.exp((-sinceDetonation * 3) / D.flashDecay) : 0;
+        flashEl.current.style.opacity = f > 0.002 ? f.toFixed(3) : '0';
+      }
 
       // ── Charge ring ────────────────────────────────────────────────────────
       // Driven per frame rather than through a CSS transition. The transition
@@ -255,14 +346,20 @@ export function HoldToBlast() {
       const shake = blastHandle.shake * BLAST.shake.dom;
 
       for (const t of targets) {
-        const amt = a * t.falloff;
-        const push = amt * BLAST.domPush * (1 + wob);
+        // Nothing moves before the front arrives; after it, the held push
+        // comes in fast and the strike rings out on top of it.
+        const tau = now - t.hit;
+        const struck = tau > 0 ? 1 - Math.exp(-tau * 14) : 0;
+        const strike = tau > 0 ? Math.exp(-D.damping * omega * tau) * Math.sin(omegaD * tau) : 0;
+
+        const amt = a * t.falloff * struck;
+        const push = amt * BLAST.domPush * (1 + wob) + strike * D.kick * t.falloff;
         const jx = shake > 0 ? (Math.random() - 0.5) * 2 * shake * t.falloff : 0;
         const jy = shake > 0 ? (Math.random() - 0.5) * 2 * shake * t.falloff : 0;
-        t.el.style.transform = `translate3d(${t.dx * push + jx}px, ${t.dy * push + jy}px, 0) rotate(${
-          t.dx * amt * BLAST.domRotate + jx * 0.08
-        }deg)`;
-        t.el.style.opacity = String(1 - amt * BLAST.domFade);
+        const rot =
+          t.dx * amt * BLAST.domRotate + strike * D.kickRotate * t.spin * t.falloff + jx * 0.08;
+        t.el.style.transform = `translate3d(${(t.dx * push + jx).toFixed(2)}px, ${(t.dy * push + jy).toFixed(2)}px, 0) rotate(${rot.toFixed(3)}deg)`;
+        if (!t.chrome) t.el.style.opacity = (1 - amt * BLAST.domFade).toFixed(3);
       }
     };
 
@@ -293,18 +390,32 @@ export function HoldToBlast() {
   if (reducedMotion) return null;
 
   return (
-    <div
-      ref={ring}
-      aria-hidden="true"
-      className="pointer-events-none fixed z-[115] h-28 w-28 rounded-full opacity-0"
-      // A thin ring that closes in over the hold, not a glowing disc.
-      // The heavy inset shadow that used to be here bloomed into a soft orange
-      // ball that read as an effect in its own right rather than as a readout.
-      style={{
-        border: '1px solid var(--color-accent)',
-        boxShadow: '0 0 0 1px rgba(255, 90, 31, 0.12)',
-        transform: 'translate(-50%,-50%) scale(1.15)',
-      }}
-    />
+    <>
+      {/* The detonation's light on the page. Above the canvas (z-0) and below
+          the content (z-10): it lights the room, and the type stays crisp on
+          top of it. Warm white into the ember — the palette's only colours. */}
+      <div
+        ref={flashEl}
+        aria-hidden="true"
+        className="pointer-events-none fixed inset-0 z-[5] opacity-0"
+        style={{
+          background:
+            'radial-gradient(circle at var(--bx, 70%) var(--by, 45%), rgba(255,236,214,0.95) 0%, rgba(255,120,60,0.34) 14%, rgba(255,90,31,0) 46%)',
+        }}
+      />
+      <div
+        ref={ring}
+        aria-hidden="true"
+        className="pointer-events-none fixed z-[115] h-28 w-28 rounded-full opacity-0"
+        // A thin ring that closes in over the hold, not a glowing disc.
+        // The heavy inset shadow that used to be here bloomed into a soft orange
+        // ball that read as an effect in its own right rather than as a readout.
+        style={{
+          border: '1px solid var(--color-accent)',
+          boxShadow: '0 0 0 1px rgba(255, 90, 31, 0.12)',
+          transform: 'translate(-50%,-50%) scale(1.15)',
+        }}
+      />
+    </>
   );
 }

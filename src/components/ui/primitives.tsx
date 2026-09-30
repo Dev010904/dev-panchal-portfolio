@@ -20,6 +20,7 @@ export function Plus({ className = '' }: { className?: string }) {
   return (
     <span
       aria-hidden="true"
+      data-blast="chrome"
       className={`pointer-events-none absolute block h-[9px] w-[9px] ${className}`}
     >
       <span className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-[var(--color-rule)]" />

@@ -74,13 +74,17 @@ export function Hero() {
       <CornerMarks />
 
       <div className="grid12 items-start">
-        <h1 data-blast className="col-span-12 lg:col-span-8">
+        {/* The blast targets are the two LINES, not the heading: each is
+            struck on its own as the front crosses it. The line masks are the
+            targets rather than the words inside them, because the mask clips —
+            a word thrown out of its own mask would simply vanish. */}
+        <h1 className="col-span-12 lg:col-span-8">
           <span className="sr-only">Static is a choice. Dev Panchal, web developer.</span>
           <span aria-hidden="true" className="t-display block">
-            <span data-hero-line className="line-mask">
+            <span data-hero-line data-blast className="line-mask">
               <span className="block will-change-transform">Static is</span>
             </span>
-            <span data-hero-line className="line-mask">
+            <span data-hero-line data-blast className="line-mask">
               <span className="block will-change-transform">a choice.</span>
             </span>
           </span>
@@ -138,14 +142,14 @@ export function Hero() {
         data-hero-fade
         className="pointer-events-none absolute inset-x-0 bottom-[clamp(1.25rem,4vh,2.5rem)] z-10 hidden flex-col items-center gap-1.5 opacity-0 lg:flex"
       >
-        <span className="t-label flex items-center gap-2 text-[var(--color-fg)]">
+        <span data-blast className="t-label flex items-center gap-2 text-[var(--color-fg)]">
           HOLD TO
           <span aria-hidden="true" className="spark text-[1.05em] leading-none">
             ⚡
           </span>
           BLAST
         </span>
-        <span className="t-label flex items-center gap-2">
+        <span data-blast className="t-label flex items-center gap-2">
           DARE
           <span aria-hidden="true" className="spark text-[1.05em] leading-none">
             ⚡

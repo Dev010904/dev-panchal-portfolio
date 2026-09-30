@@ -64,6 +64,29 @@ export const blastHandle = {
   origin: [0.5, 0.5] as [number, number],
   /** Bumped on each press so listeners can react once per blast. */
   epoch: 0,
+
+  /**
+   * Bumped when a hold actually completes and the charge goes off — not on
+   * the press. BlastFX spawns its debris on the change, once per detonation.
+   */
+  detonations: 0,
+  /** `performance.now()` in seconds at the last detonation. One clock for DOM and GL. */
+  detonatedAt: -1,
+  /**
+   * Where the mark is on screen, CSS px, written by BlastFX every frame the
+   * mark is the subject. The DOM shockwave starts HERE rather than at the
+   * pointer: it is the logo that explodes, wherever the press landed.
+   */
+  center: [0, 0] as [number, number],
+  centerValid: false,
+  /**
+   * `performance.now()` seconds when the 3D detonation actually fired in the
+   * hero. The camera jolt keys off this, so a Lab detonation — which has its
+   * own field response and no mark on screen — does not shake the room.
+   */
+  kickAt: -1,
+  /** 0..1 flash, decaying. Read by the mark for the ember burn. */
+  flash: 0,
 };
 
 /**

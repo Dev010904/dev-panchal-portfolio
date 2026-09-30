@@ -17,6 +17,7 @@ import { pointerHandle } from '@/lib/pointer';
 
 import { CAMERA, DPR, LAB, MOBILE, SHOTS } from '@/config/animation';
 import { AnnotationProjector } from './AnnotationProjector';
+import { BlastFX } from './BlastFX';
 import { CameraRig } from './CameraRig';
 import { DevLoop } from './DevLoop';
 import { Effects } from './Effects';
@@ -288,6 +289,10 @@ export function SceneRoot() {
               frame when it renders the light-space depth map. Move it above and
               the shafts silently lag the object by a frame. */}
             <Volumetrics mobile={mobile} />
+            {/* The detonation's debris, flash and shockwave. After MarkObject for
+              the same reason as above: it spawns from the parts' anchors, and
+              must read this frame's positions, not last frame's. */}
+            <BlastFX quality={quality} />
             {/* Three hairline arcs. Real geometry, so the mark occludes them. */}
             <SweepLines />
             <AnnotationProjector />

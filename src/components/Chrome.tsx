@@ -75,6 +75,7 @@ function Nav() {
         ref={home}
         href="/"
         data-nav-item
+        data-blast="chrome"
         className="flex items-center gap-3 text-[var(--color-fg)] opacity-0"
         onClick={(e) => {
           if (window.location.pathname !== '/') return;
@@ -89,6 +90,7 @@ function Nav() {
       <div className="flex items-center gap-3">
         <a
           data-nav-item
+          data-blast="chrome"
           href={site.whatsapp.href}
           target="_blank"
           rel="noopener noreferrer"
@@ -100,6 +102,7 @@ function Nav() {
         <button
           ref={button}
           data-nav-item
+          data-blast="chrome"
           type="button"
           onClick={() => toggleMenu()}
           aria-expanded={menuOpen}
@@ -449,6 +452,7 @@ function ScrollProgress() {
     // single screen. Mid-right is the one band of the viewport that no
     // section puts content in.
     <div
+      data-blast="chrome"
       className={`fixed right-[calc(var(--gutter)*0.5)] top-1/2 z-[100] hidden -translate-y-1/2 flex-col items-center gap-4 transition-opacity duration-500 lg:flex ${
         entered && !menuOpen ? 'opacity-100' : 'opacity-0'
       }`}
