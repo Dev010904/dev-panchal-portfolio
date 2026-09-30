@@ -25,7 +25,9 @@ void main() {
   float r = length(p);
 
   float crest = exp(-pow((r - 0.97) / uWidth, 2.0));
-  float wake = smoothstep(0.55, 0.97, r) * (1.0 - smoothstep(0.97, 1.0, r)) * 0.16;
+  // Faint. At full radius the band spans most of the frame, and a brighter
+  // wake lifted it into a grey annulus that read as a porthole, not as air.
+  float wake = smoothstep(0.62, 0.97, r) * (1.0 - smoothstep(0.97, 1.0, r)) * 0.07;
   float grit = 0.72 + 0.28 * snoise(vec2(atan(p.y, p.x) * 3.0 + uSeed, r * 4.0 - uProgress * 3.0));
 
   float fade = 1.0 - uProgress;

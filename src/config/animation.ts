@@ -784,7 +784,7 @@ export const BLAST = {
     /** World units at full size; seconds to burn out. */
     fireball: { duration: 0.42, size: 1.45 },
     /** Final radius in world units; seconds to get there; ring width as a fraction of it. */
-    shockwave: { duration: 0.8, radius: 8, width: 0.024, intensity: 2.1 },
+    shockwave: { duration: 0.8, radius: 8, width: 0.024, intensity: 1.7 },
     /**
      * Hot filings. Speeds in world units/s, lives in seconds. `trail` is the
      * seconds of travel a streak shows — motion blur, which is what makes a
