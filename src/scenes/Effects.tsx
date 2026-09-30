@@ -1,7 +1,7 @@
 'use client';
 
 import { useThree } from '@react-three/fiber';
-import { Bloom, EffectComposer } from '@react-three/postprocessing';
+import { EffectComposer } from '@react-three/postprocessing';
 import {
   BlendFunction,
   BloomEffect,
@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from 'react';
 import * as THREE from 'three';
 
 import { POST } from '@/config/animation';
+import { compactHdr, compactHdrSupported } from '@/scenes/compactHdr';
 
 /**
  * POST STACK — order matters and is not arbitrary.
@@ -54,25 +55,32 @@ import { POST } from '@/config/animation';
  */
 export function Effects({ mobile }: { mobile: boolean }) {
   const camera = useThree((s) => s.camera);
+  const gl = useThree((s) => s.gl);
 
-  /** Aberration → bloom → grain → vignette, one pass. Parameters as before, verbatim. */
-  const finishPass = useMemo(() => {
-    if (mobile) return null;
+  /**
+   * Aberration → bloom → grain → vignette, one pass. Parameters as before,
+   * verbatim. Mobile is the bloom alone, built by hand exactly as <Bloom>
+   * built it — additive, 0.85 of the desktop intensity — so that both paths
+   * hand the composer a pass, and both expose the bloom whose buffers the
+   * effect below re-formats.
+   */
+  const post = useMemo(() => {
+    // As <Bloom> built it: additive, and the four props the component was given.
+    const bloom = new BloomEffect({
+      blendFunction: BlendFunction.ADD,
+      intensity: POST.bloom.intensity * (mobile ? 0.85 : 1),
+      luminanceThreshold: POST.bloom.threshold,
+      luminanceSmoothing: POST.bloom.smoothing,
+      mipmapBlur: true,
+    });
+    if (mobile) return { bloom, pass: new EffectPass(camera, bloom) };
+
     const aberration = new ChromaticAberrationEffect({
       offset: new THREE.Vector2(POST.chromaticAberration, POST.chromaticAberration * 0.6),
       radialModulation: true,
       modulationOffset: 0.32,
     });
     aberration.blendMode.blendFunction = BlendFunction.NORMAL;
-
-    // As <Bloom> built it: additive, and the four props the component was given.
-    const bloom = new BloomEffect({
-      blendFunction: BlendFunction.ADD,
-      intensity: POST.bloom.intensity,
-      luminanceThreshold: POST.bloom.threshold,
-      luminanceSmoothing: POST.bloom.smoothing,
-      mipmapBlur: true,
-    });
 
     /*
       SOFT_LIGHT, not OVERLAY.
@@ -96,11 +104,11 @@ export function Effects({ mobile }: { mobile: boolean }) {
       darkness: POST.vignette.darkness,
     });
 
-    return new EffectPass(camera, aberration, bloom, grain, vignette);
+    return { bloom, pass: new EffectPass(camera, aberration, bloom, grain, vignette) };
   }, [camera, mobile]);
 
-  // A primitive is not disposed by R3F; this pass owns three effects and a material.
-  useEffect(() => () => finishPass?.dispose(), [finishPass]);
+  // A primitive is not disposed by R3F; this pass owns its effects and a material.
+  useEffect(() => () => post.pass.dispose(), [post]);
 
   /**
    * ONLY THE SCENE TARGET IS MULTISAMPLED, AND NOTHING RESOLVES DEPTH.
@@ -130,20 +138,12 @@ export function Effects({ mobile }: { mobile: boolean }) {
       // Reallocated on its next use, with the settings above.
       out.dispose();
     }
-  }, [composer]);
 
-  if (mobile || !finishPass) {
-    return (
-      <EffectComposer ref={setComposer} multisampling={0} enableNormalPass={false}>
-        <Bloom
-          intensity={POST.bloom.intensity * 0.85}
-          luminanceThreshold={POST.bloom.threshold}
-          luminanceSmoothing={POST.bloom.smoothing}
-          mipmapBlur
-        />
-      </EffectComposer>
-    );
-  }
+    // Half the bytes in every full-size buffer, same picture — see
+    // scenes/compactHdr.ts for the measurements on both counts.
+    if (!compactHdrSupported(gl, composer.inputBuffer.samples)) return;
+    for (const target of [composer.inputBuffer, out, ...bloomTargets(post.bloom)]) compactHdr(target);
+  }, [composer, gl, post]);
 
   /*
    * MULTISAMPLING IS 2, AFTER LOOKING AT IT ON SCREEN.
@@ -166,12 +166,30 @@ export function Effects({ mobile }: { mobile: boolean }) {
    * is sample memory and the resolve blit — bandwidth, not shading.
    */
   return (
-    <EffectComposer ref={setComposer} multisampling={2} enableNormalPass={false}>
+    <EffectComposer ref={setComposer} multisampling={mobile ? 0 : 2} enableNormalPass={false}>
       {/* There was a scene blur/desaturate pass here, driven by the menu. It
           is gone on purpose: the drawer is opaque and the scene beside it
           stays sharp, so the pass existed only to run a fullscreen blur at
           strength zero on every frame of the site's life. */}
-      <primitive object={finishPass} dispose={null} />
+      <primitive object={post.pass} dispose={null} />
     </EffectComposer>
   );
+}
+
+/**
+ * The bloom's full- and half-size targets: its luminance threshold, and the
+ * mip chain's two ladders. postprocessing 6.39 keeps these on fields its types
+ * do not declare, so they are read defensively — if an upgrade moves them,
+ * bloom simply keeps its own format.
+ */
+function bloomTargets(bloom: BloomEffect): THREE.WebGLRenderTarget[] {
+  const internals = bloom as unknown as {
+    luminancePass?: { renderTarget?: unknown };
+    mipmapBlurPass?: { downsamplingMipmaps?: unknown[]; upsamplingMipmaps?: unknown[] };
+  };
+  return [
+    internals.luminancePass?.renderTarget,
+    ...(internals.mipmapBlurPass?.downsamplingMipmaps ?? []),
+    ...(internals.mipmapBlurPass?.upsamplingMipmaps ?? []),
+  ].filter((t): t is THREE.WebGLRenderTarget => (t as THREE.WebGLRenderTarget | undefined)?.isWebGLRenderTarget === true);
 }
