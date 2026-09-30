@@ -184,6 +184,12 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
   // ── Fireball and shockwave: one billboard each ────────────────────────────
   const billboards = useMemo(() => {
     const quad = new THREE.PlaneGeometry(1, 1);
+    // The ring is drawn as a RING, not a quad with a ring painted on it. At
+    // full size a quad covers the whole viewport, and every one of those
+    // pixels would run the shader to output nothing; the band is about a
+    // quarter of the area. Its UVs map the unit disc exactly as the quad's
+    // did, so the fragment shader is unchanged.
+    const band = new THREE.RingGeometry(0.62, 1, 96, 1);
     const fire = new THREE.ShaderMaterial({
       vertexShader: glsl(billboardVert),
       fragmentShader: glsl(fireballFrag),
@@ -208,7 +214,7 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
-    return { quad, fire, shock };
+    return { quad, band, fire, shock };
   }, []);
 
   useEffect(
@@ -221,20 +227,38 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
       smoke.geo.dispose();
       smoke.mat.dispose();
       billboards.quad.dispose();
+      billboards.band.dispose();
       billboards.fire.dispose();
       billboards.shock.dispose();
     },
     [sparks, shards, smoke, billboards],
   );
 
-  // Compile every program now, against the real scene's lights, fog and
-  // environment — `compile` walks materials whether or not they are visible.
+  /**
+   * Compile every program now, against the real scene's lights, fog and
+   * environment — `compile` walks materials whether or not they are visible.
+   *
+   * WITH A RENDER TARGET BOUND, OR IT COMPILES THE WRONG PROGRAMS. three bakes
+   * tone mapping and output colour space into each program, and it picks them
+   * from whatever is bound: the canvas gets the renderer's settings, any
+   * render target gets NoToneMapping and linear output. Everything here is
+   * drawn into the composer's buffer, never to the canvas. Compiled with
+   * nothing bound, every program came out as a variant that is never used,
+   * and the real ones were built on the detonation frame — measured at 184ms,
+   * on the one frame that has to be clean.
+   */
   useEffect(() => {
     if (!root.current) return;
-    gl.compileAsync(root.current, camera, scene).catch(() => {
-      // A failed async compile only means the first detonation compiles
-      // inline, which is the behaviour this exists to avoid, not a break.
-    });
+    const probe = new THREE.WebGLRenderTarget(1, 1);
+    const previous = gl.getRenderTarget();
+    gl.setRenderTarget(probe);
+    gl.compileAsync(root.current, camera, scene)
+      .catch(() => {
+        // A failed async compile only means the first detonation compiles
+        // inline, which is the behaviour this exists to avoid, not a break.
+      })
+      .finally(() => probe.dispose());
+    gl.setRenderTarget(previous);
   }, [gl, camera, scene, sparks, shards, smoke, billboards]);
 
   const st = useRef({
@@ -378,7 +402,9 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
     ring.current.visible = rt < 1;
     if (rt < 1) {
       billboards.shock.uniforms.uProgress.value = rt;
-      billboards.shock.uniforms.uSize.value = 2 * F.shockwave.radius * (1 - (1 - rt) ** 2.2) + 0.01;
+      // The band's geometry is in radius units, so uSize IS the radius here
+      // (the quads are unit squares, where it is the diameter).
+      billboards.shock.uniforms.uSize.value = F.shockwave.radius * (1 - (1 - rt) ** 2.2) + 0.005;
     }
 
     // ── Sparks ──────────────────────────────────────────────────────────────
@@ -545,7 +571,7 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
       />
       <mesh
         ref={ring}
-        geometry={billboards.quad}
+        geometry={billboards.band}
         material={billboards.shock}
         frustumCulled={false}
         renderOrder={12}

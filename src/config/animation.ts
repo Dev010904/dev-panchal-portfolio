@@ -821,8 +821,8 @@ export const BLAST = {
      * the Iris Xe at 20fps for the whole hold. `grow` is size gained per second.
      */
     smoke: {
-      count: 9,
-      countLow: 4,
+      count: 6,
+      countLow: 3,
       life: [1.4, 2.4] as [number, number],
       size: [0.45, 1.05] as [number, number],
       grow: 0.22,
