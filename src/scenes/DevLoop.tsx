@@ -725,21 +725,6 @@ export function DevLoop() {
     };
 
     /**
-     * Read, or force, the post tier the quality governor chose — and its
-     * one-line verdict. Forcing is how the tier that THIS machine would never
-     * be promoted to still gets looked at: a full-tier regression is invisible
-     * on the Iris Xe otherwise, because the governor keeps it lean.
-     */
-    const quality = (tier?: 'lean' | 'full') => {
-      if (tier) useScene.getState().setPostTier(tier);
-      return {
-        tier: useScene.getState().postTier,
-        verdict: gl.domElement.dataset.quality ?? null,
-        dpr: gl.getPixelRatio(),
-      };
-    };
-
-    /**
      * Move the shaft light on a live page, so the position can be CHOSEN by
      * looking at the result rather than derived on paper. Moves the depth
      * camera and the shader uniform together — they must never disagree.
@@ -947,7 +932,6 @@ export function DevLoop() {
       perf,
       cad,
       volumetric,
-      quality,
       glass,
       particles,
       labField,

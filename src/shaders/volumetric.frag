@@ -95,15 +95,6 @@ void main() {
   // as a shaft. Animated so the pattern does not sit still between frames.
   float jitter = hash(gl_FragCoord.xy + uTime * 60.0);
 
-  // The ray in the light's clip space, already biased to [0,1] by uLightMatrix.
-  // A projective transform is linear in homogeneous coordinates, so
-  // M * (origin + dir * t) is exactly lightOrigin + lightDir * t: one multiply
-  // per fragment instead of one per step, and the same numbers — the divide by
-  // w stays inside the loop, so this holds for a perspective light as well as
-  // the orthographic one in use.
-  vec4 lightOrigin = uLightMatrix * vec4(origin, 1.0);
-  vec4 lightDir = uLightMatrix * vec4(dir, 0.0);
-
   float acc = 0.0;
 
   for (int i = 0; i < MAX_STEPS; i++) {
@@ -112,7 +103,8 @@ void main() {
     float t = (float(i) + jitter) * stepLen;
     vec3 p = origin + dir * t;
 
-    vec4 lp = lightOrigin + lightDir * t;
+    // Into the light's clip space, already biased to [0,1] by uLightMatrix.
+    vec4 lp = uLightMatrix * vec4(p, 1.0);
     vec3 luv = lp.xyz / lp.w;
 
     // Outside the light frustum there is no occluder information, so treat the
