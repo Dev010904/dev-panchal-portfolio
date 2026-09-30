@@ -38,24 +38,26 @@ export function Volumetrics({ mobile }: { mobile: boolean }) {
   const volRef = useRef<THREE.Mesh>(null);
 
   /**
-   * CALIBRATION STATE.
+   * THE STEP COUNT IS DECIDED ON THE VISITOR'S MACHINE, NOT HERE.
    *
-   * The step count is decided on the visitor's machine, from real frames,
-   * once. It is not a number measured here and shipped — an Intel Iris Xe and
-   * an M3 are two orders of magnitude apart on a raymarch, and the first
-   * attempt at sizing this layer by reasoning hung the browser outright.
+   * An Intel Iris Xe and an M3 are two orders of magnitude apart on a
+   * raymarch, and the first attempt at sizing this layer by reasoning hung the
+   * browser outright. So the layer boots on the LOW rung and the quality
+   * governor (QualityGovernor.tsx) moves it from measured GPU time. Booting at
+   * 48 steps is how the browser got hung.
+   *
+   * This component used to calibrate itself from frame deltas, against an 11ms
+   * budget. A 60Hz display cannot deliver a delta under 16.7ms, so every 60Hz
+   * machine demoted itself to the floor rung whatever its GPU could do — a
+   * vsync-capped number cannot show headroom. Measured on an Iris Xe, the
+   * rungs cost 6.3ms (14), 9.5ms (24) and 17.2ms (48) of GPU time.
    */
-  const cal = useRef({ samples: [] as number[], rounds: 0 });
-
   useEffect(() => {
     if (mobile) {
       volumetricHandle.steps = 0;
       return;
     }
     initLightDepth();
-    // Starts at the LOW rung, not the high one. The high rung is only taken
-    // after a measurement says there is room for it — see calibrate() in the
-    // QA harness. Booting at 48 steps is how the browser got hung.
     if (!volumetricHandle.calibrated) volumetricHandle.steps = V.stepsLow;
   }, [mobile]);
 
@@ -118,63 +120,6 @@ export function Volumetrics({ mobile }: { mobile: boolean }) {
         ? 1
         : 0;
     amount.current += (wanted - amount.current) * (1 - Math.exp(-V.fadeRate * dt));
-
-    // ── Pick a rung, once, from real frames ─────────────────────────────────
-    //
-    // Deliberately NOT `performance.now()` around a forced advance: that times
-    // draw-call SUBMISSION and is blind to fragment cost, which is essentially
-    // all of this layer. Real frame deltas do see it, because a GPU that
-    // cannot finish in time is exactly what pushes the delta past the refresh
-    // interval.
-    //
-    // Guarded on visibility because an occluded tab throttles rAF to a few Hz,
-    // and calibrating against that would downgrade every machine to the low
-    // rung for a reason that has nothing to do with the machine. That is the
-    // same trap docs/PERFORMANCE.md records for every other measurement here.
-    // Two rounds, not one. The layer BOOTS on the low rung, so the first round
-    // measures 24 steps and may promote to 48 — and a machine with headroom at
-    // 24 does not necessarily have it at twice the work. The second round
-    // measures whatever the first chose and can demote again. Capped at two so
-    // a borderline machine settles instead of oscillating between rungs
-    // forever, which is far more visible than simply running at the lower one.
-    if (
-      cal.current.rounds < 2 &&
-      volumetricHandle.steps > 0 &&
-      amount.current > 0.98 &&
-      typeof document !== 'undefined' &&
-      document.visibilityState === 'visible'
-    ) {
-      // Implausible deltas are a throttled or descheduled tab, not a slow GPU.
-      if (delta > 0.004 && delta < 0.4) cal.current.samples.push(delta);
-      if (cal.current.samples.length >= 45) {
-        const sorted = cal.current.samples.slice().sort((a, b) => a - b);
-        const p50ms = sorted[Math.floor(sorted.length / 2)] * 1000;
-
-        // THREE RUNGS, NOT TWO — and the third exists because the ladder used
-        // to have no answer for a machine that misses the budget at its own
-        // bottom rung. This one boots at stepsLow and could only ever promote
-        // to steps or stay put, so a laptop measuring 31ms against an 11ms
-        // budget kept running 24 steps it plainly could not afford.
-        //
-        // Demote whenever the measurement is over budget; promote only when
-        // there is real headroom rather than a hair under the line, so a
-        // borderline machine settles instead of oscillating. Rounds are still
-        // capped at two, so the ladder can fall 48 -> 24 -> 14 but cannot
-        // wander forever.
-        const current = volumetricHandle.steps;
-        let next = current;
-        if (p50ms > V.budgetMs) {
-          next = current > V.stepsLow ? V.stepsLow : V.stepsFloor;
-        } else if (p50ms < V.budgetMs * 0.6) {
-          next = current < V.stepsLow ? V.stepsLow : V.steps;
-        }
-
-        volumetricHandle.steps = next;
-        volumetricHandle.calibrated = true;
-        cal.current.rounds++;
-        cal.current.samples.length = 0;
-      }
-    }
 
     const live = amount.current > 0.004;
 

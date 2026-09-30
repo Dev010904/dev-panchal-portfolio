@@ -1,12 +1,6 @@
 'use client';
 
-import {
-  AdaptiveDpr,
-  AdaptiveEvents,
-  PerformanceMonitor,
-  Preload,
-  useProgress,
-} from '@react-three/drei';
+import { AdaptiveEvents, Preload, useProgress } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
@@ -15,7 +9,7 @@ import { bootComplete, bootProgress, markBootStep, onBootProgress } from '@/lib/
 import { probeCapability } from '@/lib/gpgpu/PingPong';
 import { pointerHandle } from '@/lib/pointer';
 
-import { CAMERA, DPR, LAB, MOBILE, SHOTS } from '@/config/animation';
+import { CAMERA, DPR, LAB, MOBILE, QUALITY, SHOTS } from '@/config/animation';
 import { AnnotationProjector } from './AnnotationProjector';
 import { CameraRig } from './CameraRig';
 import { DevLoop } from './DevLoop';
@@ -25,6 +19,7 @@ import { LabField } from './LabField';
 import { LabFieldGPU } from './LabFieldGPU';
 import { MarkObject } from './MarkObject';
 import { PageStructures } from './PageStructures';
+import { QualityGovernor } from './QualityGovernor';
 import { Stage } from './Stage';
 import { StackConstellation } from './StackConstellation';
 import { SweepLines } from './SweepLines';
@@ -50,6 +45,8 @@ export function SceneRoot() {
   const setEnv = useScene((s) => s.setEnv);
   const [mobile, setMobile] = useState(false);
   const [reduced, setReduced] = useState(false);
+  /** Index into QUALITY.dprRungs, moved only by the quality governor. */
+  const [dprRung, setDprRung] = useState(0);
 
   /**
    * THE CANVAS IS NOT MOUNTED ON THE FIRST RENDER, AND THAT IS THE WHOLE POINT.
@@ -222,7 +219,7 @@ export function SceneRoot() {
     <div className="fixed inset-0 z-0" aria-hidden="true">
       {live && (
         <Canvas
-          dpr={mobile ? MOBILE.dpr : DPR}
+          dpr={resolveDpr(mobile ? MOBILE.dpr : DPR, QUALITY.dprRungs[dprRung])}
           gl={{
             antialias: false,
             alpha: false,
@@ -279,37 +276,39 @@ export function SceneRoot() {
             <WipeOverlay />
 
             <Effects mobile={mobile || reduced} />
+            {/* Inside this boundary, beside Effects, on purpose: it holds a
+              frame callback at priority 1000, which takes rendering away from
+              R3F, and only the composer gives it back. The two must mount and
+              unmount together. */}
+            <QualityGovernor mobile={mobile || reduced} onDprRung={setDprRung} />
           </Suspense>
 
           {/*
-          WHAT MAKES AdaptiveDpr ACTUALLY DO ANYTHING.
-
-          `AdaptiveDpr` only reacts to `state.performance.current`, and nothing
-          in R3F lowers that because a frame was slow — `regress()` is called on
-          interaction (pointer moves, via AdaptiveEvents), not on cost. So for
-          the whole life of this site AdaptiveDpr has been dropping resolution
-          when the pointer moved and never once when the GPU was actually
-          struggling, which is close to the opposite of the intent.
-
-          `PerformanceMonitor` is the piece that samples real frame times and
-          moves `current` between `min` and `max`. `factor` starts at 0.5 and is
-          nudged by onIncline/onDecline; AdaptiveDpr multiplies the dpr ceiling
-          by it. `flipflops` caps how many times it may change its mind before
-          giving up and holding, which stops a borderline machine oscillating
-          between two resolutions forever — that oscillation is far more visible
-          than simply running at the lower one.
+          THERE WAS A PerformanceMonitor + AdaptiveDpr PAIR HERE, AND IT NEVER
+          CHANGED THE RESOLUTION. PerformanceMonitor only computes a factor and
+          calls the callbacks it is given (none were); AdaptiveDpr only reacts
+          to `performance.current`, which nothing lowered on a slow frame. The
+          resolution is now a rung of the quality governor, passed in through
+          the `dpr` prop above — the prop has to carry it, because R3F re-applies
+          `dpr` on every Canvas render and would undo a value set around it.
         */}
-          <PerformanceMonitor
-            bounds={(refreshRate) => (refreshRate > 90 ? [50, 90] : [45, 58])}
-            flipflops={3}
-          />
-          <AdaptiveDpr pixelated={false} />
           <AdaptiveEvents />
           <Preload all />
         </Canvas>
       )}
     </div>
   );
+}
+
+/**
+ * R3F's own rule for a `[min, max]` pair — the device ratio, clamped — then
+ * scaled by the governor's rung and floored at `min` again. Returns a number,
+ * so R3F uses it as given. Only called once the Canvas is live, i.e. on the
+ * client, where `window` exists.
+ */
+function resolveDpr([min, max]: readonly [number, number], scale: number): number {
+  const target = Math.min(Math.max(min, window.devicePixelRatio || 1), max);
+  return Math.max(min, Math.round(target * scale * 100) / 100);
 }
 
 /**

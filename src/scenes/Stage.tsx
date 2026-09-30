@@ -16,8 +16,15 @@ import { markBootStep } from '@/lib/boot';
  *     needs to catch, which on a dark object is the entire job.
  *   - It costs 0 KB. The nearest usable studio HDRI is ~1.4 MB, which is most
  *     of the initial JS budget spent on something we can author better.
- *   - The rig can be animated. The key softbox drifts, so the highlight
- *     travels along the arcs instead of sitting there like a decal.
+ *   - The rig COULD be animated. It is not: nothing moves a Lightformer, and
+ *     the highlight travels along the arcs because the MARK moves through a
+ *     fixed room, which a world-space environment map shows correctly.
+ *
+ * So the environment is captured ONCE (`frames={1}`). It was `Infinity`,
+ * which re-rendered all six cube faces and re-convolved the PMREM every frame
+ * of the site's life to reproduce an identical map — 52 of the hero's 88 draw
+ * calls. If a Lightformer is ever animated, `frames` has to go back to
+ * Infinity, and that cost comes back with it.
  *
  * The three lights, in the order they matter:
  *   KEY    — large soft box, front-top-left. Establishes the form.
@@ -43,7 +50,7 @@ export const Stage = memo(function Stage({ mobile }: { mobile: boolean }) {
       <directionalLight position={[-4, 5.5, 6]} intensity={0.85} color="#cfd6e2" />
       <directionalLight position={[5, -2, -4]} intensity={0.3} color="#3a6ea5" />
 
-      <Environment resolution={mobile ? 128 : 256} frames={Infinity} background={false}>
+      <Environment resolution={mobile ? 128 : 256} frames={1} background={false}>
         {/* Void. Everything the metal reflects that is not a light is this. */}
         <mesh scale={60}>
           <sphereGeometry args={[1, 24, 24]} />

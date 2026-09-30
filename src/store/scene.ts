@@ -65,6 +65,14 @@ interface SceneStore {
    */
   constellationFocus: number;
 
+  /**
+   * Which post stack the desktop composer runs. Boots 'lean' and is promoted
+   * to 'full' only when a GPU measurement says there is room — see
+   * scenes/QualityGovernor.tsx. Written at most twice per page load, never per
+   * frame, so a store field (and the composer re-render it causes) is correct.
+   */
+  postTier: 'lean' | 'full';
+
   setProgress: (p: number) => void;
   setReady: (v: boolean) => void;
   setEntered: (v: boolean) => void;
@@ -82,6 +90,7 @@ interface SceneStore {
   setFooterNear: (v: boolean) => void;
   setLabCount: (n: number) => void;
   setConstellationFocus: (v: number) => void;
+  setPostTier: (t: 'lean' | 'full') => void;
   setEnv: (v: { reducedMotion?: boolean; isMobile?: boolean; visible?: boolean }) => void;
 }
 
@@ -112,6 +121,7 @@ export const useScene = create<SceneStore>((set) => ({
   visible: true,
   labCount: 0,
   constellationFocus: -1,
+  postTier: 'lean',
 
   setProgress: (progress) => set({ progress }),
   setReady: (ready) => set({ ready }),
@@ -130,6 +140,7 @@ export const useScene = create<SceneStore>((set) => ({
   setFooterNear: (footerNear) => set({ footerNear }),
   setLabCount: (labCount) => set({ labCount }),
   setConstellationFocus: (constellationFocus) => set({ constellationFocus }),
+  setPostTier: (postTier) => set({ postTier }),
   setEnv: (v) => set(v),
 }));
 

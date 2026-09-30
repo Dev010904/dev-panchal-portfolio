@@ -1452,11 +1452,12 @@ export const LAB_GPU = {
  */
 export const VOLUMETRIC = {
   /**
-   * Raymarch steps, desktop. Dropped to `stepsLow` when the hero's measured
-   * p50 exceeds `budgetMs`, and the volume is not mounted at all on mobile.
-   * The shader's loop bound is a compile-time constant of 64 — a `uniform`
-   * loop count is legal in ESSL3 but generates a dynamic loop that ANGLE
-   * unrolls badly, so the count is a uniform BREAK inside a fixed loop.
+   * Raymarch steps, desktop. The layer boots on `stepsLow` and the rung is
+   * then chosen by the quality governor (scenes/QualityGovernor.tsx) from
+   * measured GPU time; the volume is not mounted at all on mobile. The
+   * shader's loop bound is a compile-time constant of 64 — a `uniform` loop
+   * count is legal in ESSL3 but generates a dynamic loop that ANGLE unrolls
+   * badly, so the count is a uniform BREAK inside a fixed loop.
    */
   steps: 48,
   stepsLow: 24,
@@ -1475,7 +1476,6 @@ export const VOLUMETRIC = {
    * lowering a raymarch; here it was already solved.
    */
   stepsFloor: 14,
-  budgetMs: 11,
   /**
    * Half-extent of the scattering volume, world units.
    *
@@ -1760,17 +1760,18 @@ export const MOBILE = {
 /**
  * DEVICE PIXEL RATIO — the floor matters more than the ceiling.
  *
- * `[min, max]`, driven by PerformanceMonitor + AdaptiveDpr in SceneRoot. The
- * ceiling is what a fast machine gets; the FLOOR is what a slow one is allowed
- * to fall back to, and it was 1.
+ * `[min, max]`. The ceiling is what a fast machine gets; the FLOOR is what a
+ * slow one is allowed to fall back to. The quality governor steps down through
+ * `QUALITY.dprRungs` of the device-resolved value, never below `min`.
  *
- * That floor was the whole problem. Measured on the deployed site: p50 frame
- * 29ms on a 60Hz display, which is two vsync intervals — every frame missed
- * 16.7ms and landed on 33.3ms, locking the site at 30fps. The adaptive system
- * was working exactly as designed and had nowhere left to go, because it was
- * already sitting on its own floor. Same shape of bug as the volumetric step
- * ladder having no bottom rung: a mechanism that can only choose between two
- * options it cannot afford.
+ * AN EARLIER VERSION OF THIS NOTE SAID PerformanceMonitor + AdaptiveDpr DROVE
+ * THIS, AND NEITHER EVER DID. drei's PerformanceMonitor only computes a factor
+ * and calls the callbacks it is given — none were — and AdaptiveDpr only reacts
+ * to `performance.current`, which nothing lowered on a slow frame. So the
+ * canvas ran at full resolution on every machine, measured at 1872x958 on an
+ * Iris Xe holding 20fps. And even a working DPR change would not have helped:
+ * the post composer only resizes its buffers when the CSS size changes, so a
+ * quarter of the canvas pixels saved 1.1ms of 8.7. Effects.tsx now resizes it.
  *
  * The site is fill-bound, which was measured rather than assumed — shrinking
  * the canvas 7x took the best achievable frame from 33.4ms to 3.5ms. So pixels
@@ -1784,3 +1785,70 @@ export const MOBILE = {
  * machines that were dropping frames pay, and they were already paying more.
  */
 export const DPR: [number, number] = [0.7, 2];
+
+/**
+ * THE QUALITY GOVERNOR — scenes/QualityGovernor.tsx.
+ *
+ * One controller decides, once per page load and from measurements on the
+ * visitor's own machine, three things in a fixed order: the post tier, the
+ * volumetric rung, then the resolution rung. One owner, because three
+ * independent loops reading the same frame times all react to the same slow
+ * frame and over-correct together.
+ *
+ * THE INSTRUMENT IS GPU TIME, NOT FRAME DELTA. A frame delta on a 60Hz display
+ * can never read below 16.7ms, so it cannot see headroom, and the volumetric
+ * calibration this replaces compared exactly that number against an 11ms
+ * budget — every 60Hz machine demoted itself to the floor rung, including ones
+ * with room for 48 steps. `EXT_disjoint_timer_query_webgl2` measures what the
+ * frame actually cost the GPU. Where it is missing (Safari, Firefox) the
+ * governor falls back to frame deltas and only ever steps DOWN, because a
+ * vsync-capped number cannot justify a step up.
+ *
+ * Measured on an Iris Xe at 1872x958, hero, GPU ms per frame, volumetric at
+ * 14 steps, environment captured once:
+ *
+ *   MSAA 2, half-float, bloom | aberration | grain+vignette   ~37 (sum)
+ *   MSAA 0, same three passes                                 22.7
+ *   MSAA 0, aberration moved last (2 passes)                  17.7
+ *   MSAA 2, aberration moved last (2 passes)                  32.2
+ *   MSAA 0, no aberration (1 pass)                            12.4
+ *   MSAA 0, no aberration, 8-bit buffers — the lean tier       8.7
+ *
+ * The same scene and post stack with the composer off ran at a locked 60fps,
+ * and with the entire scene hidden it still ran at 20: the post stack was the
+ * frame, not the geometry.
+ */
+export const QUALITY = {
+  /**
+   * Seconds after the preloader leaves before the first sample, so the
+   * reveal's first-use shader compiles are not in the measurement.
+   */
+  settle: 1.2,
+  /** Frames discarded after any change — a recompile or a buffer realloc. */
+  warmFrames: 12,
+  /** Samples per measurement round. */
+  samples: 36,
+  /**
+   * GPU milliseconds per frame the scene may cost. Not 16.7: the compositor,
+   * the DOM layers and scroll-driven work spend the rest of the frame.
+   */
+  budgetMs: 12,
+  /**
+   * Lean GPU cost below which the full post stack is worth trying. It measured
+   * ~4x lean on the Iris Xe, so this is the level where even that ratio lands
+   * inside the budget. A verification round demotes again if it does not.
+   */
+  promoteMs: 3,
+  /** Volumetric promotion to `VOLUMETRIC.steps` needs this much headroom. */
+  volumetricHeadroom: 0.6,
+  /**
+   * Resolution rungs, as a fraction of the device-resolved DPR. Fixed rungs,
+   * never a continuous scale, for the reason every other ladder here gives.
+   */
+  dprRungs: [1, 0.85, 0.7] as const,
+  /**
+   * Frame-delta fallback: a round is over budget when its median frame misses
+   * the fastest observed frame (the refresh interval) by this factor.
+   */
+  missFactor: 1.25,
+} as const;
