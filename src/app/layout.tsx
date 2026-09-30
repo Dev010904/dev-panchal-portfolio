@@ -141,8 +141,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </SmoothScroll>
 
         {/* Same-origin script and beacon (/_vercel/insights), so connect-src
-            'self' in the CSP already covers it. Cookieless. */}
-        <Analytics />
+            'self' in the CSP already covers it. Cookieless. Production only:
+            in development the package loads a debug script from
+            va.vercel-scripts.com, which the CSP refuses, and a console error on
+            every dev load buries the ones that matter. */}
+        {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>
   );
