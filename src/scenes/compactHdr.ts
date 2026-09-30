@@ -13,11 +13,15 @@ import * as THREE from 'three';
  * On an Iris Xe at 1872x958 this site is bandwidth-bound, not shading-bound:
  * the costly passes are the MSAA resolves, the bloom threshold and the mip
  * chain, not the shaders. So halving the bytes is most of the frame. Measured
- * A/B on the deployed site, alternating so drift could not favour either side:
+ * A/B on the deployed site, alternating builds so drift could not favour
+ * either side, rAF only with every probe removed:
  *
- *   hero, at rest    GPU 11.5ms → ~8ms (median); missed vsyncs ~1 in 3 → ~1 in 20
- *   glass hover      25fps → 40fps, the transmission buffer being the largest
+ *   hero, at rest    46fps → 56fps; missed vsyncs 31% → 6-7%
+ *                    (GPU time for its passes 11.5ms → ~8ms, median)
+ *   glass hover      27fps → 42fps, the transmission buffer being the largest
  *                    single cost in that state
+ *
+ * docs/PERFORMANCE.md has the per-pass breakdown this was chosen from.
  *
  * WHAT IT COSTS IN THE PICTURE, MEASURED RATHER THAN ARGUED: consecutive
  * frames read back across the switch differ by less than two ordinary frames
