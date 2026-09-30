@@ -25,17 +25,10 @@ export const site = {
    */
   url: 'https://dev-panchal.vercel.app',
   whatsapp: {
-    /**
-     * Display form only. Grouped +91 XXXXX XXXXX — the standard Indian
-     * five-and-five split with the country code, because a bare ten-digit run
-     * reads as a string of numbers rather than as a phone number, and an
-     * international client cannot tell what to dial from it.
-     *
-     * Never build the href from this. `wa.me` takes digits with no spaces and
-     * no plus sign, so the two forms are deliberately separate values rather
-     * than one string with the punctuation stripped at the call site.
-     */
-    display: '+91 84602 89432',
+    // The platform name, not the number, same as GitHub and LinkedIn below.
+    // The number is not printed anywhere on the page; the wa.me link opens
+    // the chat directly, so a visitor never needs to read or dial it.
+    display: 'WhatsApp',
     href: 'https://wa.me/918460289432',
   },
   // The platform name, not the handle, on all three. The link is the address;
