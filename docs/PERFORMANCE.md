@@ -920,3 +920,118 @@ D3D11 path**, `checkShaderErrors: true`. Both preconditions for detecting X3595
 therefore still hold, and the result is still zero: 47 programs linked, two
 console messages, both the React DevTools INFO line, with the reader proved
 live on that exact load before the absence was believed.
+
+---
+
+## The frame on the GPU, on the deployed site — 2026-09-30
+
+Everything above times the CPU. This section is the GPU, measured on the live
+production site and on Vercel previews — never on localhost — in Brave on the
+same Intel Iris Xe (ANGLE D3D11), 1872×958 at DPR 1, 60 Hz.
+
+### Method
+
+`EXT_disjoint_timer_query_webgl2`, injected into the running page. The dev
+harness is not in production, so nothing here depends on it.
+
+- **Per pass.** A query closed and reopened on every `bindFramebuffer`, so each
+  render target's work is timed on its own; one query per draw call splits the
+  scene pass further.
+- **Per frame.** One query from the frame's first GL call to the end of R3F's
+  callback. It includes whatever else the GPU interleaves — the browser's own
+  compositor — so it reads higher than the sum of the passes, and it is the
+  number that decides whether a frame makes vsync.
+- **What a visitor gets.** rAF intervals with every probe removed. A frame over
+  20ms is a missed vsync. The fps figures below are all of this kind.
+
+Hazards, every one of them hit during this pass:
+
+- A hidden or occluded tab does not render; rAF simply stops. Check
+  `document.visibilityState` before believing anything.
+- On a Vercel preview the toolbar is an iframe, and a script can land in it and
+  report a perfect 60fps from a document with no canvas. Check
+  `window === window.top` and that a canvas exists.
+- A screenshot during a measurement is a stall in the measurement.
+- `getFramebufferAttachmentParameter` and every other `get*` is a synchronous
+  round trip to the GPU process. A probe that calls one per bind changes the
+  thing it is measuring.
+- Part of an MSAA resolve's cost lands in the NEXT timed segment: an empty
+  segment straight after the resolve measured ~0.9ms. Attribute accordingly.
+
+### Where the frame went — hero, at rest, before
+
+| Pass | GPU ms, mean |
+| --- | --- |
+| Light-space depth, 256² | 0.8 |
+| Scene into the 2× MSAA target | 4.4 (raymarch 2.0, the mark 0.7) |
+| MSAA resolve | 2.3, plus ~0.9 landing in the next pass |
+| Bloom luminance threshold, full size | 2.4 |
+| Bloom mip chain | 1.6 |
+| One final pass: aberration, bloom, grain, vignette | 1.5 |
+| **Sum of passes** | **11.5 median, 18 p90** |
+
+Bandwidth, not shading. Every heavy row is a full-size read or write of an
+RGBA16F buffer; the most expensive shader on the site, the raymarch, is 2ms.
+
+With the pointer on the mark (the glass state) the frame roughly doubles: three
+renders the scene again into a private transmission buffer — full size, 4×
+MSAA, mipmapped, half float — and, because the glass is double-sided, resolves
+and mipmaps it twice a frame. About 9ms of GPU time for that buffer alone.
+
+### Landed, in order
+
+1. **The composer's second buffer lost its samples and depth; nothing resolves
+   depth** (841b921). postprocessing clones the scene buffer for its ping-pong
+   partner, so every fullscreen pass had been writing into a multisampled,
+   depth-carrying target.
+2. **One fullscreen pass for aberration + bloom + grain + vignette** (b3e8331)
+   instead of the three R3F's grouping produced.
+3. **An opaque canvas** (4ad3dec): three r171 always requests `alpha: true`,
+   so the page composited 1.8M translucent pixels a frame. Plus two fewer
+   square roots per raymarch step.
+4. **The blast precompiled under a bound render target** (10c785a). three bakes
+   the output target's tone mapping and colour space into each program, so a
+   `compileAsync` run with nothing bound built variants the composer never
+   uses, and the detonation frame compiled them for real: 184ms. Precompile
+   under the same kind of target the frame draws into.
+5. **R11F_G11F_B10F for every full-size HDR buffer** (d7b6b33, 098c48f) — the
+   composer's, bloom's threshold and mip chain, and three's private
+   transmission buffer, caught on the one call that binds it. Four bytes a
+   pixel instead of eight, HDR range kept. See `scenes/compactHdr.ts`.
+
+Result of 5, rAF only, no probes, alternating builds:
+
+| | before | after |
+| --- | --- | --- |
+| Hero at rest | 45.8 fps, 31% of frames missed | 56.4 / 55.9 fps, 6–7% missed |
+| Glass hover | 27.0 fps | 42.0 / 41.7 fps |
+
+Picture cost, read back rather than argued: consecutive frames across the
+switch differ by less than two ordinary frames differ from each other; the one
+systematic shift is blue, a third of one 8-bit level darker, because the
+conversion truncates.
+
+### Rejected
+
+- **MSAA 0, with or without FXAA.** The D and P broke into stair-steps with a
+  colour fringe on every step, and FXAA did not rescue them. Rejected on sight.
+- **A lower-resolution tier.** Same verdict, same reason.
+- **Fewer raymarch steps, a half-size volumetric.** Both change the light.
+
+### The lightning, re-measured
+
+An earlier note put 55–98ms frames on the sweep-line strikes. It does not
+reproduce on the current build: 42 strikes in six seconds, zero programs
+linked, and frame times identical to rest. The bolt program is compiled at boot
+and each strike is a few kilobytes of buffer upload.
+
+### Open
+
+- **The volumetric's step ladder cannot climb on a 60 Hz display.** It
+  calibrates on frame DELTAS against an 11ms budget, and at 60 Hz a delta is
+  never under 16.7ms, so every 60 Hz visitor lands on the floor rung (14)
+  however fast their GPU. That is what this site looks like today, so it was
+  left alone; calibrating on GPU time would let fast machines climb.
+- **Glass hover is still ~42fps on an Iris Xe.** Transmission's second
+  resolve-and-mipmap exists only because the glass is double-sided; dropping
+  that changes how the far wall reads through the near one.
