@@ -476,7 +476,7 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
         smoke.pos[k] += smoke.vel[k] * dt;
         smoke.pos[k + 1] += smoke.vel[k + 1] * dt;
         smoke.pos[k + 2] += smoke.vel[k + 2] * dt;
-        smoke.size[i] *= 1 + 0.4 * dt;
+        smoke.size[i] *= 1 + F.smoke.grow * dt;
         smoke.rot[i] += smoke.turn[i] * dt;
         const o = n * 3;
         P[o] = smoke.pos[k];
@@ -491,7 +491,7 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
       smoke.geo.instanceCount = n;
       smoke.attrs.iPos.needsUpdate = true;
       smoke.attrs.iData.needsUpdate = true;
-      smoke.mat.uniforms.uHeat.value = Math.exp(-t * 2.5);
+      smoke.mat.uniforms.uHeat.value = Math.exp(-t * 7);
       smokeMesh.current.visible = n > 0;
     }
 

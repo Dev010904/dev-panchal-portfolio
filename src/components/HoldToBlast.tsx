@@ -399,6 +399,10 @@ export function HoldToBlast() {
         aria-hidden="true"
         className="pointer-events-none fixed inset-0 z-[5] opacity-0"
         style={{
+          // Its own layer, painted ahead of time: otherwise the browser rasters
+          // a full-screen gradient on the detonation frame, the one frame that
+          // has to be clean. Opacity is then a compositor-only change.
+          willChange: 'opacity',
           background:
             'radial-gradient(circle at var(--bx, 70%) var(--by, 45%), rgba(255,236,214,0.95) 0%, rgba(255,120,60,0.34) 14%, rgba(255,90,31,0) 46%)',
         }}

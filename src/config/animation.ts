@@ -782,7 +782,7 @@ export const BLAST = {
     /** Seconds; how long the flash takes to die. Multipliers at its peak. */
     flash: { duration: 0.34, env: 2.6, ember: 6 },
     /** World units at full size; seconds to burn out. */
-    fireball: { duration: 0.55, size: 1.7 },
+    fireball: { duration: 0.55, size: 1.45 },
     /** Final radius in world units; seconds to get there; ring width as a fraction of it. */
     shockwave: { duration: 0.8, radius: 8, width: 0.018, intensity: 1.35 },
     /**
@@ -814,14 +814,20 @@ export const BLAST = {
       /** Seconds for a hot chip to cool to graphite. */
       cool: 0.9,
     },
-    /** The haze. Kept faint: on #08080A, smoke that reads is smoke that lifts the black. */
+    /**
+     * The haze. Kept faint: on #08080A, smoke that reads is smoke that lifts
+     * the black. The first tuning (16 puffs to 2.1 units at 0.2) built a grey
+     * cloud across half the frame on the deployed page, and its overdraw held
+     * the Iris Xe at 20fps for the whole hold. `grow` is size gained per second.
+     */
     smoke: {
-      count: 16,
-      countLow: 7,
-      life: [1.6, 2.9] as [number, number],
-      size: [0.8, 2.1] as [number, number],
-      rise: 0.35,
-      opacity: 0.2,
+      count: 9,
+      countLow: 4,
+      life: [1.4, 2.4] as [number, number],
+      size: [0.45, 1.05] as [number, number],
+      grow: 0.22,
+      rise: 0.3,
+      opacity: 0.075,
     },
     /** Camera jolt: world units at the peak, decay per second, shake frequency in Hz. */
     camera: { amplitude: 0.13, decay: 5.5, frequency: 21 },
