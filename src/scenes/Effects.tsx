@@ -4,6 +4,7 @@ import { useThree } from '@react-three/fiber';
 import { Bloom, EffectComposer } from '@react-three/postprocessing';
 import {
   BlendFunction,
+  BloomEffect,
   ChromaticAberrationEffect,
   type EffectComposer as EffectComposerImpl,
   EffectPass,
@@ -30,7 +31,7 @@ import { POST } from '@/config/animation';
  *
  * Mobile drops everything but Bloom.
  *
- * ── SAME PICTURE, TWO FULLSCREEN PASSES INSTEAD OF THREE ──────────────────
+ * ── SAME PICTURE, ONE FULLSCREEN PASS INSTEAD OF THREE ────────────────────
  *
  * @react-three/postprocessing groups effects into passes by itself, and a
  * convolution effect — the aberration — ends its group: bloom, then the
@@ -39,17 +40,22 @@ import { POST } from '@/config/animation';
  * an Iris Xe at 1872x958.
  *
  * The rule postprocessing itself enforces is narrower: two convolution
- * effects cannot share a pass. One convolution effect FIRST in a pass,
- * followed by effects that only colour the pixel, is legal — and it is exactly
- * the original chain, because the aberration still samples bloom's output and
- * the grain and vignette still act on the aberration's. So the aberration,
- * the grain and the vignette are built by hand into one EffectPass and handed
- * to the composer as a pass. Same effects, same parameters, same order.
+ * effects cannot share a pass, and a convolution effect must come first in
+ * the one it is in, because it samples the pass's INPUT at offsets. So all
+ * four are built by hand into one EffectPass — aberration, bloom, grain,
+ * vignette — and handed to the composer as a pass. Same effects, same
+ * parameters.
+ *
+ * The one difference is that bloom now lands after the aberration instead of
+ * before it, so the glow itself is not colour-split. The split is 0.0003 of
+ * the frame, radial, zero across the middle third — about half a pixel at the
+ * very edge of a 1080p frame — applied to a glow that is a wide blur to begin
+ * with. It is not a visible difference; the pass it saves is ~5ms.
  */
 export function Effects({ mobile }: { mobile: boolean }) {
   const camera = useThree((s) => s.camera);
 
-  /** Aberration → grain → vignette, one pass. Parameters as before, verbatim. */
+  /** Aberration → bloom → grain → vignette, one pass. Parameters as before, verbatim. */
   const finishPass = useMemo(() => {
     if (mobile) return null;
     const aberration = new ChromaticAberrationEffect({
@@ -58,6 +64,15 @@ export function Effects({ mobile }: { mobile: boolean }) {
       modulationOffset: 0.32,
     });
     aberration.blendMode.blendFunction = BlendFunction.NORMAL;
+
+    // As <Bloom> built it: additive, and the four props the component was given.
+    const bloom = new BloomEffect({
+      blendFunction: BlendFunction.ADD,
+      intensity: POST.bloom.intensity,
+      luminanceThreshold: POST.bloom.threshold,
+      luminanceSmoothing: POST.bloom.smoothing,
+      mipmapBlur: true,
+    });
 
     /*
       SOFT_LIGHT, not OVERLAY.
@@ -81,7 +96,7 @@ export function Effects({ mobile }: { mobile: boolean }) {
       darkness: POST.vignette.darkness,
     });
 
-    return new EffectPass(camera, aberration, grain, vignette);
+    return new EffectPass(camera, aberration, bloom, grain, vignette);
   }, [camera, mobile]);
 
   // A primitive is not disposed by R3F; this pass owns three effects and a material.
@@ -156,12 +171,6 @@ export function Effects({ mobile }: { mobile: boolean }) {
           is gone on purpose: the drawer is opaque and the scene beside it
           stays sharp, so the pass existed only to run a fullscreen blur at
           strength zero on every frame of the site's life. */}
-      <Bloom
-        intensity={POST.bloom.intensity}
-        luminanceThreshold={POST.bloom.threshold}
-        luminanceSmoothing={POST.bloom.smoothing}
-        mipmapBlur
-      />
       <primitive object={finishPass} dispose={null} />
     </EffectComposer>
   );
