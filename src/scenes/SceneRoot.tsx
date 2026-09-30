@@ -19,6 +19,7 @@ import { CAMERA, DPR, LAB, MOBILE, SHOTS } from '@/config/animation';
 import { AnnotationProjector } from './AnnotationProjector';
 import { BlastFX } from './BlastFX';
 import { CameraRig } from './CameraRig';
+import { compactTransmissionTarget } from './compactHdr';
 import { DevLoop } from './DevLoop';
 import { Effects } from './Effects';
 import { FooterFloor } from './FooterFloor';
@@ -265,6 +266,9 @@ export function SceneRoot() {
             gl.outputColorSpace = THREE.SRGBColorSpace;
             gl.setClearColor('#08080a', 1);
             scene.fog = new THREE.FogExp2('#08080a', 0.052);
+            // The glass state's private buffer, in half the bytes — built the
+            // first time the mark is hovered. See scenes/compactHdr.ts.
+            compactTransmissionTarget(gl);
           }}
         >
           <ProgressBridge />
