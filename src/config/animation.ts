@@ -782,9 +782,9 @@ export const BLAST = {
     /** Seconds; how long the flash takes to die. Multipliers at its peak. */
     flash: { duration: 0.34, env: 2.6, ember: 6 },
     /** World units at full size; seconds to burn out. */
-    fireball: { duration: 0.55, size: 1.45 },
+    fireball: { duration: 0.42, size: 1.45 },
     /** Final radius in world units; seconds to get there; ring width as a fraction of it. */
-    shockwave: { duration: 0.8, radius: 8, width: 0.018, intensity: 1.35 },
+    shockwave: { duration: 0.8, radius: 8, width: 0.024, intensity: 2.1 },
     /**
      * Hot filings. Speeds in world units/s, lives in seconds. `trail` is the
      * seconds of travel a streak shows — motion blur, which is what makes a
@@ -845,8 +845,8 @@ export const BLAST = {
       kickRotate: 5,
       frequency: 6.5,
       damping: 0.34,
-      flash: 0.22,
-      flashDecay: 0.4,
+      flash: 0.28,
+      flashDecay: 0.45,
     },
   },
 } as const;

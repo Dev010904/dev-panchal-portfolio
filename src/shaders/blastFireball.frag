@@ -31,8 +31,15 @@ void main() {
 
   float heat = 1.0 - uTime;
   vec3 white = vec3(1.0, 0.93, 0.82);
+  // The body burns HOTTER than the ember — the accent is what it cools to,
+  // not what it is at the moment of the burst. Deep ember at low alpha over
+  // black came out brown on the page, which reads as smoke, not fire.
+  vec3 flame = vec3(1.0, 0.62, 0.3);
   vec3 ember = vec3(1.0, 0.353, 0.122);
-  vec3 c = mix(ember, white, core * heat) * (1.0 + 3.0 * core * heat);
+  vec3 body3 = mix(ember, flame, heat);
+  vec3 c = mix(body3, white, core * heat) * (1.2 + 3.5 * core * heat);
 
-  fragColor = vec4(c, body * heat * heat);
+  // Linear in heat, not squared: the squared fade had spent most of the burn
+  // before anyone could see it.
+  fragColor = vec4(c, body * heat);
 }
