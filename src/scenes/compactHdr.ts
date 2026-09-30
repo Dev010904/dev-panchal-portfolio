@@ -79,8 +79,9 @@ export function compactHdr(target: THREE.WebGLRenderTarget) {
  */
 export function compactTransmissionTarget(renderer: THREE.WebGLRenderer) {
   const original = renderer.setRenderTarget;
+  let found = false;
   const watch: typeof original = function (this: THREE.WebGLRenderer, target, ...rest) {
-    const texture = target && !Array.isArray(target.texture) ? target.texture : null;
+    const texture = !found && target && !Array.isArray(target.texture) ? target.texture : null;
     if (
       target &&
       texture &&
@@ -88,7 +89,10 @@ export function compactTransmissionTarget(renderer: THREE.WebGLRenderer) {
       texture.generateMipmaps &&
       texture.minFilter === THREE.LinearMipmapLinearFilter
     ) {
-      renderer.setRenderTarget = original;
+      found = true;
+      // Only if nothing has wrapped this since; otherwise stay in the chain as
+      // a pass-through rather than cut out whatever sits on top.
+      if (renderer.setRenderTarget === watch) renderer.setRenderTarget = original;
       if (compactHdrSupported(renderer, target.samples)) compactHdr(target as THREE.WebGLRenderTarget);
     }
     return original.call(this, target, ...rest);
