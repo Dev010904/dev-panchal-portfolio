@@ -124,10 +124,14 @@ void main() {
       lit = step(luv.z - uBias, occluder);
     }
 
+    // Squared distance and one inversesqrt, instead of a sqrt for the length
+    // and a vec3 divide to normalise: the attenuation only ever wanted d², and
+    // the phase only wants the cosine. Same values; the 1e-8 floor is the old
+    // 1e-4 floor on the distance, squared.
     vec3 toLight = uLightPos - p;
-    float dist = length(toLight);
-    float atten = 1.0 / (1.0 + dist * dist * uAttenuation);
-    float phase = henyeyGreenstein(dot(dir, toLight / max(dist, 1e-4)), uAniso);
+    float dist2 = dot(toLight, toLight);
+    float atten = 1.0 / (1.0 + dist2 * uAttenuation);
+    float phase = henyeyGreenstein(dot(dir, toLight) * inversesqrt(max(dist2, 1e-8)), uAniso);
 
     acc += lit * atten * phase * stepLen;
   }

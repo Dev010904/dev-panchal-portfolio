@@ -223,12 +223,34 @@ export function SceneRoot() {
       {live && (
         <Canvas
           dpr={mobile ? MOBILE.dpr : DPR}
-          gl={{
-            antialias: false,
-            alpha: false,
-            powerPreference: 'high-performance',
-            stencil: false,
-            depth: true,
+          /*
+            AN OPAQUE CANVAS, WHICH THE OBJECT FORM OF THIS PROP CANNOT GIVE.
+
+            three r171 creates its context with `alpha: true` whatever it is
+            told — its own `alpha` option only decides the clear alpha. So the
+            browser treated this canvas as translucent and blended all 1.8M
+            pixels of it over the page on every frame, though every one is
+            opaque #08080A. Handing three a context made with `alpha: false`
+            lets the compositor draw it as the opaque layer it is. Nothing on
+            screen changes: the page behind it is the same colour.
+          */
+          gl={(defaults) => {
+            const canvas = defaults.canvas as HTMLCanvasElement;
+            const context = canvas.getContext('webgl2', {
+              alpha: false,
+              antialias: false,
+              depth: true,
+              stencil: false,
+              powerPreference: 'high-performance',
+            });
+            return new THREE.WebGLRenderer({
+              canvas,
+              context: context ?? undefined,
+              antialias: false,
+              depth: true,
+              stencil: false,
+              powerPreference: 'high-performance',
+            });
           }}
           camera={{
             fov: CAMERA.fov,
