@@ -500,9 +500,9 @@ export const SHAFT = {
    * passes through: the floors going by. Centre [x, z] and radius, world units.
    */
   ring: { centre: [-0.6, -1.4] as [number, number], radius: 5.2, segments: 128 },
-  dust: { count: 820, countLow: 360, spread: [16, 13] as [number, number], trail: 0.05, maxLength: 3 },
+  dust: { count: 820, countLow: 360, spread: [16, 13] as [number, number], trail: 0.04, maxLength: 2.2 },
   /** Peak opacity of the line work and of the dust. */
-  opacity: { line: 0.6, guide: 0.3, dust: 0.62 },
+  opacity: { line: 0.6, guide: 0.3, dust: 0.52 },
 } as const;
 
 /**
