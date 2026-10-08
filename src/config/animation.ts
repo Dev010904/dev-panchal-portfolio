@@ -1804,9 +1804,10 @@ export const GLASS = {
    * THE HERO HOVER. Slow in, slower out — a snap here would read as a
    * rollover state on a button rather than as a material change in an object.
    * The k in 1 - exp(-k·dt), so it is frame-rate independent like everything
-   * else.
+   * else. `blastOutRate` is the exception: a press clears the glass in ~0.4s,
+   * so the mark is graphite again long before the hold detonates it.
    */
-  hover: { inRate: 1.7, outRate: 1.15 },
+  hover: { inRate: 1.7, outRate: 1.15, blastOutRate: 7.5 },
   /**
    * THE DECONSTRUCTION WINDOW.
    *

@@ -6,7 +6,7 @@ precision highp float;
  */
 
 attribute vec4 iPos;   // xyz: world centre, w: rotation in radians
-attribute vec4 iData;  // x: world diameter, y: heat (0 cold .. ~1.2 white), z: envelope 0..1, w: seed
+attribute vec4 iData;  // x: world diameter, y: heat (0 cold .. 1 at ignition), z: envelope 0..1, w: seed
 
 varying vec2 vUv;
 varying float vHeat;

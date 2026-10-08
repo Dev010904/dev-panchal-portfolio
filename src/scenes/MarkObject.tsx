@@ -437,8 +437,21 @@ export function MarkObject({
     // The hero hover. Only where the mark is the subject and the object is not
     // already doing something else — hovering it mid-dissolve would fight the
     // particle state for the same material.
+    //
+    // Nor while it is being blown apart. The press almost always lands on the
+    // mark, so the glass used to come on under the cursor during the hold, or
+    // when a flying part crossed it mid-blast: glass shattering is not what
+    // graphite does, the fire's light reads on the machined surface and not
+    // through a lens, and the glass state is a whole extra scene render
+    // (transmission) at the most expensive moment on the site.
+    const blasting = blastHandle.held || blastHandle.amount > 0;
     const canHover =
-      !frozen && !s.isMobile && !s.menuOpen && s.shot === 'hero' && lensHandle.present;
+      !frozen &&
+      !blasting &&
+      !s.isMobile &&
+      !s.menuOpen &&
+      s.shot === 'hero' &&
+      lensHandle.present;
 
     if (canHover) {
       hoverNdc.set(s.pointer[0], s.pointer[1]);
@@ -457,8 +470,14 @@ export function MarkObject({
 
     // Asymmetric: slower coming back than going in. A symmetric ease reads as
     // a rollover state on a button; this reads as a material settling.
+    // A press clears it fast (gone in ~0.4s of a two-second hold), so the mark
+    // is solid again well before anything detonates.
     const hoverGoal = glassHandle.over ? 1 : 0;
-    const hoverRate = glassHandle.over ? GLASS.hover.inRate : GLASS.hover.outRate;
+    const hoverRate = glassHandle.over
+      ? GLASS.hover.inRate
+      : blasting
+        ? GLASS.hover.blastOutRate
+        : GLASS.hover.outRate;
     glassHandle.hover +=
       (hoverGoal - glassHandle.hover) * (1 - Math.exp(-hoverRate * dt));
     if (glassHandle.hover < 1e-4 && hoverGoal === 0) glassHandle.hover = 0;

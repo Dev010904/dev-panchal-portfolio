@@ -282,7 +282,27 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
     gl.setRenderTarget(previous);
     // A failed async compile only means the first detonation compiles inline,
     // which is the behaviour this exists to avoid, not a break.
-    Promise.allSettled(jobs).finally(() => probe.dispose());
+    Promise.allSettled(jobs).finally(() => {
+      probe.dispose();
+      settlePrograms();
+    });
+  };
+
+  /**
+   * Run three's one-time program check now rather than on first draw.
+   *
+   * The first time a program is used, three reads its info logs to report
+   * errors — and on ANGLE that read blocks until the driver has really
+   * finished the program, even after the parallel compile reported it done.
+   * Measured on the deployed page: 66ms + 17ms + 19ms inside one frame, the
+   * first time the light went out mid-blast. `getUniforms()` is the public
+   * entry to that same check; calling it once the compile has landed moves
+   * the wait under the preloader. Programs already in use return their cache.
+   */
+  const settlePrograms = () => {
+    for (const program of gl.info.programs ?? []) {
+      (program as unknown as { getUniforms?: () => unknown }).getUniforms?.();
+    }
   };
 
   useEffect(() => {
@@ -292,7 +312,10 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
     gl.setRenderTarget(probe);
     gl.compileAsync(root.current, camera, scene)
       .catch(() => {})
-      .finally(() => probe.dispose());
+      .finally(() => {
+        probe.dispose();
+        settlePrograms();
+      });
     gl.setRenderTarget(previous);
 
     const mark = markHandles.current.group;
@@ -310,18 +333,21 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
    * D3D program on its first real draw, not at link. Every first draw would
    * land on the detonation frame.
    *
-   * So for two frames under the preloader, everything here draws once as
+   * So for four frames under the preloader, everything here draws as
    * degenerate geometry — zero-size billows, zero-width sparks, zero-scale
-   * chips, a zero-size flash — with the light on at zero intensity, which
-   * also takes the mark's lit variants through a real draw. Nothing reaches a
-   * pixel. Waits for the environment map, because the lit programs are keyed
-   * on it and a warm-up before it exists would warm the wrong ones.
+   * chips, a zero-size flash — first with the light on at zero intensity
+   * (which also takes the mark's lit variants through a real draw), then with
+   * it off. Both, because the chips outlive the light: the first version only
+   * warmed them lit, and their unlit variant then stalled 130ms on its first
+   * draw, at the moment the fire went out. Nothing reaches a pixel. Waits for
+   * the environment map, because the lit programs are keyed on it and a
+   * warm-up before it exists would warm the wrong ones.
    */
   const warmFrames = useRef(0);
   const zeroMatrix = useMemo(() => new THREE.Matrix4().makeScale(0, 0, 0), []);
-  const warmUp = (on: boolean) => {
+  const warmUp = (on: boolean, lit: boolean) => {
     fireLight.intensity = 0;
-    fireLight.visible = on;
+    fireLight.visible = on && lit;
     fire.geo.instanceCount = on ? 1 : 0;
     sparks.geo.instanceCount = on ? 1 : 0;
     flash.mat.uniforms.uSize.value = on ? 0 : F.flash.size;
@@ -481,9 +507,9 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
       compiledMark.current = group;
     }
 
-    if (warmFrames.current < 3 && scene.environment && !s.active) {
+    if (warmFrames.current < 5 && scene.environment && !s.active) {
       warmFrames.current++;
-      warmUp(warmFrames.current < 3);
+      warmUp(warmFrames.current < 5, warmFrames.current < 3);
     }
 
     if (blastHandle.detonations !== s.lastDetonation) {
