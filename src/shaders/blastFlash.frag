@@ -20,7 +20,7 @@ void main() {
 
   float core = exp(-r * r * 22.0);
   float halo = (1.0 - r) * (1.0 - r) * (1.0 - r) * 0.3;
-  vec3 c = vec3(1.0, 0.86, 0.64) * (core * 4.0 + halo) * uIntensity;
+  vec3 c = vec3(1.0, 0.86, 0.64) * (core * 3.0 + halo) * uIntensity;
 
   fragColor = vec4(c, 1.0);
 }

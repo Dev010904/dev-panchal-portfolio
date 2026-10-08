@@ -794,7 +794,7 @@ export const BLAST = {
      * `core` is the white-hot point's 1/e time in seconds; `size` its world
      * diameter. Short on purpose: it is two or three frames, not an event.
      */
-    flash: { duration: 0.3, env: 1.8, ember: 6, core: 0.045, size: 1.6 },
+    flash: { duration: 0.3, env: 1.8, ember: 6, core: 0.03, size: 1.4 },
     /**
      * The fireball, as billows. Speeds in world units/s (the hero frame is
      * ~3 units tall at the mark), sizes as world diameters. `cool` is each
@@ -827,7 +827,7 @@ export const BLAST = {
      * `spread` how much it thickens as it travels; `strength` the peak bend in
      * screen heights. Decelerating, as a front that has spent its overpressure.
      */
-    shockwave: { duration: 0.62, radius: 1.5, width: 0.03, spread: 0.06, strength: 0.032 },
+    shockwave: { duration: 0.62, radius: 1.5, width: 0.034, spread: 0.06, strength: 0.046 },
     /** Heat shimmer over the fire: seconds, radius in screen heights, bend in screen heights. */
     haze: { duration: 1.9, radius: 0.2, strength: 0.0024 },
     /**

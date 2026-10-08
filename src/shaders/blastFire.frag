@@ -48,7 +48,7 @@ vec3 blackbody(float t) {
   c = mix(c, vec3(0.62, 0.085, 0.012), smoothstep(0.16, 0.34, t));  // deep red
   c = mix(c, vec3(2.0, 0.6, 0.1), smoothstep(0.32, 0.56, t));       // orange
   c = mix(c, vec3(3.4, 2.0, 0.6), smoothstep(0.54, 0.84, t));       // yellow
-  c = mix(c, vec3(5.5, 5.0, 4.1), smoothstep(0.84, 1.15, t));       // white heat
+  c = mix(c, vec3(4.2, 3.6, 2.6), smoothstep(0.84, 1.15, t));       // white heat
   return c;
 }
 
