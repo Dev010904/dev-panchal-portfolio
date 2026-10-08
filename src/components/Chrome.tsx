@@ -30,6 +30,9 @@ export function Chrome() {
 
 /* ── Nav ──────────────────────────────────────────────────────────────────── */
 
+/** sessionStorage key: set once the visitor has opened the menu this session. */
+const MENU_SEEN_KEY = 'dp.menu-seen';
+
 function Nav() {
   const entered = useScene((s) => s.entered);
   const menuOpen = useScene((s) => s.menuOpen);
@@ -38,11 +41,43 @@ function Nav() {
   const home = useCursorTarget<HTMLAnchorElement>();
   const button = useCursorTarget<HTMLButtonElement>();
 
+  /**
+   * Whether this visitor has already found the menu. Until they have, the
+   * button carries a slow ember glint (CSS only, see .menu-cta in globals.css)
+   * — the one moving thing in the bar, because the interior pages behind it
+   * were going unvisited. Once it has been opened it has done its job and goes
+   * still for the rest of the session.
+   */
+  const [seen, setSeen] = useState(true);
+  useEffect(() => {
+    try {
+      setSeen(sessionStorage.getItem(MENU_SEEN_KEY) === '1');
+    } catch {
+      setSeen(false);
+    }
+  }, []);
+  useEffect(() => {
+    if (!menuOpen) return;
+    setSeen(true);
+    try {
+      sessionStorage.setItem(MENU_SEEN_KEY, '1');
+    } catch {
+      // Storage blocked (private mode, site data off): the glint simply
+      // returns on the next page load, which is harmless.
+    }
+  }, [menuOpen]);
+
   useGsap(
     () => {
       if (!entered) return;
+      // The MENU button lives outside the header (see below), so it is
+      // collected explicitly rather than through the scoped selector.
+      const items = [
+        ...(root.current?.querySelectorAll<HTMLElement>('[data-nav-item]') ?? []),
+        ...(button.current ? [button.current] : []),
+      ];
       gsap.fromTo(
-        '[data-nav-item]',
+        items,
         { autoAlpha: 0, y: -12 },
         {
           autoAlpha: 1,
@@ -58,75 +93,108 @@ function Nav() {
     root,
   );
 
-  return (
-    <header
-      ref={root}
-      // Padding and min-height both come from the shared --nav-* tokens, so the
-      // bar's real height is exactly the number the pages below it clear by.
-      // See the note on --nav-h in globals.css.
-      //
-      // `data-topbar` is how every rail finds the thing it has to stay clear of.
-      // Measured rather than assumed, because the bar's height is a clamp and
-      // the rails need the resolved pixel value — see useRailFade.
-      data-topbar
-      className="fixed inset-x-0 top-0 z-[100] flex min-h-[var(--nav-h)] items-center justify-between px-[var(--gutter)] py-[var(--nav-pad-y)] mix-blend-difference"
-    >
-      <Link
-        ref={home}
-        href="/"
-        data-nav-item
-        data-blast="chrome"
-        className="flex items-center gap-3 text-[var(--color-fg)] opacity-0"
-        onClick={(e) => {
-          if (window.location.pathname !== '/') return;
-          e.preventDefault();
-          scrollToSection('index');
-        }}
-      >
-        <MarkGlyph size={22} />
-        <span className="t-label text-[var(--color-fg)]">DEV PANCHAL</span>
-      </Link>
+  const menuLabel = menuOpen ? 'CLOSE' : 'MENU';
 
-      <div className="flex items-center gap-3">
-        <a
+  return (
+    <>
+      <header
+        ref={root}
+        // Padding and min-height both come from the shared --nav-* tokens, so the
+        // bar's real height is exactly the number the pages below it clear by.
+        // See the note on --nav-h in globals.css.
+        //
+        // `data-topbar` is how every rail finds the thing it has to stay clear of.
+        // Measured rather than assumed, because the bar's height is a clamp and
+        // the rails need the resolved pixel value — see useRailFade.
+        data-topbar
+        className="fixed inset-x-0 top-0 z-[100] flex min-h-[var(--nav-h)] items-center justify-between px-[var(--gutter)] py-[var(--nav-pad-y)] mix-blend-difference"
+      >
+        <Link
+          ref={home}
+          href="/"
           data-nav-item
           data-blast="chrome"
-          href={site.whatsapp.href}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="chip t-label hidden text-[var(--color-fg)] opacity-0 transition-colors hover:border-[var(--color-fg-dim)] sm:inline-flex"
+          className="flex items-center gap-3 text-[var(--color-fg)] opacity-0"
+          onClick={(e) => {
+            if (window.location.pathname !== '/') return;
+            e.preventDefault();
+            scrollToSection('index');
+          }}
         >
-          LET&apos;S TALK
-        </a>
+          <MarkGlyph size={22} />
+          <span className="t-label text-[var(--color-fg)]">DEV PANCHAL</span>
+        </Link>
 
+        <div className="flex items-center gap-3">
+          <a
+            data-nav-item
+            data-blast="chrome"
+            href={site.whatsapp.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="chip t-label hidden text-[var(--color-fg)] opacity-0 transition-colors hover:border-[var(--color-fg-dim)] sm:inline-flex"
+          >
+            LET&apos;S TALK
+          </a>
+
+          {/* MENU's place in the bar. The real button sits in its own layer
+              below; this keeps LET'S TALK exactly where it was beside it. */}
+          <span aria-hidden="true" className="chip t-label invisible">
+            {menuLabel}
+            <MenuGlyph open={menuOpen} />
+          </span>
+        </div>
+      </header>
+
+      {/*
+        THE MENU BUTTON — solid white, black type: the inverse of LET'S TALK.
+
+        Visitors were landing, staying on the home page and never opening the
+        menu, so the interior pages behind it went unseen. An outlined chip at
+        the same weight as LET'S TALK read as decoration. A filled one is the
+        single brightest thing in the bar and reads as the way in.
+
+        It cannot live inside the header. The header is painted with
+        mix-blend-difference, so a white fill there would be inverted against
+        whatever passes under it — black over the drawer, black patches over the
+        white headline on scroll. Out here it is the colour it says it is, over
+        anything, and the bar's layout is held by the placeholder above.
+
+        Over the open drawer (off-white) it flips to black with white type so it
+        never disappears into the panel it controls.
+      */}
+      <div className="pointer-events-none fixed inset-x-0 top-0 z-[101] flex min-h-[var(--nav-h)] items-center justify-end px-[var(--gutter)] py-[var(--nav-pad-y)]">
         <button
           ref={button}
-          data-nav-item
           data-blast="chrome"
+          data-glint={entered && !seen && !menuOpen ? '1' : undefined}
           type="button"
           onClick={() => toggleMenu()}
           aria-expanded={menuOpen}
           aria-controls="menu-overlay"
-          className="chip t-label text-[var(--color-fg)] opacity-0 transition-colors hover:border-[var(--color-fg-dim)]"
+          className="menu-cta chip t-label pointer-events-auto opacity-0"
         >
-          {menuOpen ? 'CLOSE' : 'MENU'}
-          <span aria-hidden="true" className="flex flex-col gap-[3px]">
-            <span
-              className="block h-px w-3.5 bg-current transition-transform duration-500"
-              style={{
-                transform: menuOpen ? 'translateY(2px) rotate(45deg)' : 'none',
-              }}
-            />
-            <span
-              className="block h-px w-3.5 bg-current transition-transform duration-500"
-              style={{
-                transform: menuOpen ? 'translateY(-2px) rotate(-45deg)' : 'none',
-              }}
-            />
-          </span>
+          {menuLabel}
+          <MenuGlyph open={menuOpen} />
         </button>
       </div>
-    </header>
+    </>
+  );
+}
+
+/** The two-line burger that crosses into an X while the drawer is open. */
+function MenuGlyph({ open }: { open: boolean }) {
+  return (
+    <span aria-hidden="true" className="menu-glyph flex flex-col gap-[3px]">
+      <span
+        className="block h-px w-3.5 bg-current transition-transform duration-500"
+        style={{ transform: open ? 'translateY(2px) rotate(45deg)' : undefined }}
+      />
+      <span
+        className="block h-px w-3.5 bg-current transition-transform duration-500"
+        style={{ transform: open ? 'translateY(-2px) rotate(-45deg)' : undefined }}
+      />
+    </span>
   );
 }
 
@@ -264,8 +332,8 @@ function MenuOverlay() {
     <div
       ref={root}
       id="menu-overlay"
-      // z-[95] deliberately sits under the header's z-[100] so the top bar —
-      // and the CLOSE control in it — stays above the panel.
+      // z-[95] deliberately sits under the header's z-[100] and the menu
+      // button's z-[101], so the top bar and the CLOSE control stay above it.
       className="pointer-events-none fixed right-0 top-0 z-[95] flex h-[100dvh] flex-col justify-between overflow-y-auto bg-[#f4f3ef] px-[clamp(1.5rem,2.6vw,3rem)] pb-[clamp(2rem,5vh,3.5rem)] pt-[clamp(6rem,14vh,10rem)] text-[#0a0a0c]"
       // No transform here on purpose — see the note in the effect above. The
       // pre-JS paint is hidden by `visibility` alone, and GSAP owns the

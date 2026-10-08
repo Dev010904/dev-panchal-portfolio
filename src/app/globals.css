@@ -268,6 +268,81 @@ html.lenis body {
   gap: 0.6rem;
 }
 
+/**
+ * THE MENU BUTTON — a filled chip, the inverse of LET'S TALK beside it.
+ *
+ * White fill, near-black type: the brightest thing in the bar, because the
+ * interior pages behind the menu were going unvisited. Ember on hover, the
+ * site's one accent. While the drawer is open it inverts to black with white
+ * type, so it stays visible over the off-white panel it sits on.
+ *
+ * The glint is an ember band that crosses the face once every few seconds
+ * until the visitor has opened the menu — set by `data-glint` from Chrome.tsx,
+ * and gone for the rest of the session once it has been used. Transform only,
+ * on a pseudo-element under the label, so it costs nothing on the main thread
+ * and never crosses the type.
+ */
+.menu-cta {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background: var(--color-fg);
+  border-color: var(--color-fg);
+  color: var(--color-bg);
+  transition:
+    background-color 0.35s var(--ease-reveal),
+    border-color 0.35s var(--ease-reveal),
+    color 0.35s var(--ease-reveal);
+}
+.menu-cta:hover {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-bg);
+}
+.menu-cta[aria-expanded='true'] {
+  background: var(--color-bg);
+  border-color: var(--color-bg);
+  color: var(--color-fg);
+}
+.menu-cta[aria-expanded='true']:hover {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-bg);
+}
+/* The burger's top line draws in on hover, so the glyph answers the pointer. */
+.menu-cta .menu-glyph > span {
+  transform-origin: right center;
+}
+.menu-cta:hover[aria-expanded='false'] .menu-glyph > span:first-child {
+  transform: scaleX(0.55);
+}
+.menu-cta::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    100deg,
+    rgba(255, 90, 31, 0) 30%,
+    rgba(255, 90, 31, 0.5) 50%,
+    rgba(255, 90, 31, 0) 70%
+  );
+  transform: translateX(-110%);
+  pointer-events: none;
+}
+.menu-cta[data-glint='1']::after {
+  animation: menu-glint 6.5s var(--ease-move) 2.2s infinite;
+}
+@keyframes menu-glint {
+  0% {
+    transform: translateX(-110%);
+  }
+  16%,
+  100% {
+    transform: translateX(110%);
+  }
+}
+
 /* ── Interaction ────────────────────────────────────────────────────────── */
 
 a,
