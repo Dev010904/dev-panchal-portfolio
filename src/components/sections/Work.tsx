@@ -104,21 +104,14 @@ export function Work() {
         onEnter: enter,
         onEnterBack: enter,
         /**
-         * Hand the camera back on the way UP.
-         *
-         * Nothing else did, so the `work` pose persisted above the section:
-         * scrolling up out of the pin left the camera 60 units below the mark,
-         * framing an empty corner of the room while the marquee and the
-         * Deconstruction were on screen. Scrolling DOWN through the same band
-         * rests at `hero` — the Deconstruction's scrub hands over to it once
-         * its progress parks at 1 — so restoring `hero` here is not a new pose,
-         * it is the one the forward path already uses, which is what makes the
-         * two directions match.
+         * On the way UP, only the label changes here. The camera is the travel
+         * band's: it climbs back to the mark as the section scrolls down out of
+         * view, and hands `hero` back at its own start. Setting `hero` here, on
+         * the pin's first pixel, flew the camera back to the mark while the
+         * section was still filling the screen.
          */
         onLeaveBack: () => {
-          const s = useScene.getState();
-          s.setShot('hero');
-          s.setSection('THE MARK');
+          useScene.getState().setSection('THE MARK');
         },
       });
 

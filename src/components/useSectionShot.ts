@@ -1,7 +1,8 @@
 'use client';
 
 import { useGsap, ScrollTrigger } from '@/lib/gsap';
-import type { ShotName } from '@/config/animation';
+import { TRAVEL, type ShotName } from '@/config/animation';
+import { travelHandle } from '@/scenes/handles';
 import { useScene } from '@/store/scene';
 
 /**
@@ -46,7 +47,18 @@ export function useSectionShot(
         start,
         end: 'bottom 45%',
         onEnter: apply,
-        onEnterBack: apply,
+        onEnterBack: () => {
+          // Coming back up into this section from the next one: if a travel
+          // band leaves from here and is still complete, it owns the camera —
+          // this line sits inside the band's last tenth of a viewport, and
+          // switching here sent the camera the wrong way until the band began.
+          // The band hands this shot back when it reaches its own start.
+          if (TRAVEL[travelHandle.route].from === shot && travelHandle.p >= 1) {
+            if (useScene.getState().activeSection !== label) useScene.getState().setSection(label);
+            return;
+          }
+          apply();
+        },
       });
     },
     [shot, label, start],
