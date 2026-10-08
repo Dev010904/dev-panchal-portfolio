@@ -6,12 +6,12 @@ import * as THREE from 'three';
 
 import { BLAST } from '@/config/animation';
 import { GLSL3, glsl } from '@/lib/glsl';
-import { blastHandle, markHandles } from '@/scenes/handles';
+import { createNoiseTexture } from '@/lib/noiseTexture';
+import { blastHandle, blastLensHandle, markHandles } from '@/scenes/handles';
 import billboardVert from '@/shaders/blastBillboard.vert';
-import fireballFrag from '@/shaders/blastFireball.frag';
-import ringFrag from '@/shaders/blastRing.frag';
-import smokeFrag from '@/shaders/blastSmoke.frag';
-import smokeVert from '@/shaders/blastSmoke.vert';
+import fireFrag from '@/shaders/blastFire.frag';
+import fireVert from '@/shaders/blastFire.vert';
+import flashFrag from '@/shaders/blastFlash.frag';
 import sparkFrag from '@/shaders/blastSpark.frag';
 import sparkVert from '@/shaders/blastSpark.vert';
 import { sceneState } from '@/store/scene';
@@ -50,23 +50,28 @@ function instancedQuad(count: number, attrs: Record<string, number>) {
 /**
  * THE DETONATION.
  *
- * Everything the release of a hold throws off the mark: the flash, the core
- * burn, the shockwave, hot filings, graphite chips and a faint haze — see
- * BLAST.fx for what each one is for and why the sequence is in that order.
+ * Everything the release of a hold throws off the mark: the white-hot flash,
+ * the fireball, the light it casts, the pressure front and the shimmer after
+ * it, hot filings and embers, and graphite chips — see BLAST.fx for what each
+ * one is for and why the sequence is in that order.
  *
- * COST. Every mesh here is hidden until a detonation and hidden again once
- * the last particle dies, so at rest this adds nothing to a frame. During one
- * it is a few hundred instanced quads, two small instanced meshes and three
- * billboards, simulated on the CPU in typed arrays with no allocation.
+ * COST. Every mesh here, and the light, is hidden until a detonation and
+ * hidden again once the last particle dies, so at rest this adds nothing to a
+ * frame. During one it is a few hundred instanced quads, a handful of fire
+ * billows reading a baked noise texture, two small instanced meshes and one
+ * billboard, simulated on the CPU in typed arrays with no allocation.
  *
  * NO STALL ON THE FRAME THAT MATTERS. A program compiling the first time it is
  * drawn would land exactly on the detonation frame, the one frame that has to
  * be clean. So every material here is compiled at mount, against the real
  * scene's lights and environment, while the preloader is still covering the
- * page, and with KHR_parallel_shader_compile where the browser has it.
+ * page, and with KHR_parallel_shader_compile where the browser has it. That
+ * includes the light: switching it on changes the light count every lit
+ * program was built for, so the mark and the chips are compiled a second time
+ * WITH it on, and the switch picks up programs that already exist.
  *
  * Also the one place that knows where the mark is on SCREEN, so it publishes
- * that for the DOM shockwave (blastHandle.center).
+ * that for the DOM strike (blastHandle.center) and the lens (blastLensHandle).
  */
 export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
   const gl = useThree((s) => s.gl);
@@ -76,21 +81,24 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
 
   const low = quality === 'low';
   const nSparks = low ? F.sparks.countLow : F.sparks.count;
+  const nEmbers = Math.round(nSparks * F.sparks.embers);
   const nShards = low ? F.shards.countLow : F.shards.count;
   const nHot = Math.round(nShards * F.shards.hot);
-  const nSmoke = low ? F.smoke.countLow : F.smoke.count;
+  const nFire = low ? F.fire.countLow : F.fire.count;
 
   const root = useRef<THREE.Group>(null!);
   const sparkMesh = useRef<THREE.Mesh>(null!);
-  const smokeMesh = useRef<THREE.Mesh>(null!);
+  const fireMesh = useRef<THREE.Mesh>(null!);
   const hotMesh = useRef<THREE.InstancedMesh>(null!);
   const coldMesh = useRef<THREE.InstancedMesh>(null!);
-  const fireball = useRef<THREE.Mesh>(null!);
-  const ring = useRef<THREE.Mesh>(null!);
+  const flashMesh = useRef<THREE.Mesh>(null!);
 
-  // ── Sparks ────────────────────────────────────────────────────────────────
+  // ── Sparks and embers ─────────────────────────────────────────────────────
+  // One buffer, two populations: the first `nSparks - nEmbers` are filings on
+  // ballistic arcs, the rest are slow buoyant embers. Each carries its own
+  // drag, gravity and jitter, so the integrator does not branch on the kind.
   const sparks = useMemo(() => {
-    const { geo, attrs } = instancedQuad(nSparks, { iPos: 3, iVel: 3, iLife: 2 });
+    const { geo, attrs } = instancedQuad(nSparks, { iPos: 3, iVel: 3, iLife: 4 });
     const mat = new THREE.ShaderMaterial({
       vertexShader: glsl(sparkVert),
       fragmentShader: glsl(sparkFrag),
@@ -101,6 +109,7 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
         uPixelRatio: { value: 1 },
         uViewport: { value: new THREE.Vector2(1, 1) },
         uIntensity: { value: 1 },
+        uTime: { value: 0 },
       },
       transparent: true,
       depthWrite: false,
@@ -115,6 +124,11 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
       life: new Float32Array(nSparks),
       max: new Float32Array(nSparks),
       width: new Float32Array(nSparks),
+      heat: new Float32Array(nSparks),
+      seed: new Float32Array(nSparks),
+      drag: new Float32Array(nSparks),
+      gravity: new Float32Array(nSparks),
+      jitter: new Float32Array(nSparks),
     };
   }, [nSparks]);
 
@@ -152,69 +166,71 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
     };
   }, [nShards]);
 
-  // ── Smoke ─────────────────────────────────────────────────────────────────
-  const smoke = useMemo(() => {
-    const { geo, attrs } = instancedQuad(nSmoke, { iPos: 3, iData: 4 });
+  // ── The fireball, as billows ──────────────────────────────────────────────
+  const fire = useMemo(() => {
+    const { geo, attrs } = instancedQuad(nFire, { iPos: 4, iData: 4 });
+    const noise = createNoiseTexture();
     const mat = new THREE.ShaderMaterial({
-      vertexShader: glsl(smokeVert),
-      fragmentShader: glsl(smokeFrag),
+      vertexShader: glsl(fireVert),
+      fragmentShader: glsl(fireFrag),
       glslVersion: GLSL3,
       uniforms: {
-        uOpacity: { value: F.smoke.opacity },
-        uHeat: { value: 0 },
+        uNoise: { value: noise },
+        uTime: { value: 0 },
+        uEmit: { value: F.fire.emit },
+        uSoot: { value: F.fire.soot },
       },
       transparent: true,
       depthWrite: false,
+      // Premultiplied: the hot part adds light, the soot occludes. See the
+      // note at the top of blastFire.frag.
+      blending: THREE.CustomBlending,
+      blendEquation: THREE.AddEquation,
+      blendSrc: THREE.OneFactor,
+      blendDst: THREE.OneMinusSrcAlphaFactor,
     });
     return {
       geo,
       mat,
+      noise,
       attrs,
-      pos: new Float32Array(nSmoke * 3),
-      vel: new Float32Array(nSmoke * 3),
-      size: new Float32Array(nSmoke),
-      seed: new Float32Array(nSmoke),
-      rot: new Float32Array(nSmoke),
-      turn: new Float32Array(nSmoke),
-      life: new Float32Array(nSmoke),
-      max: new Float32Array(nSmoke),
+      pos: new Float32Array(nFire * 3),
+      vel: new Float32Array(nFire * 3),
+      size0: new Float32Array(nFire),
+      grow: new Float32Array(nFire),
+      cool: new Float32Array(nFire),
+      rise: new Float32Array(nFire),
+      delay: new Float32Array(nFire),
+      age: new Float32Array(nFire),
+      life: new Float32Array(nFire),
+      rot: new Float32Array(nFire),
+      turn: new Float32Array(nFire),
+      seed: new Float32Array(nFire),
+      /** Draw order, far to near, rebuilt each frame — the soot is alpha-blended. */
+      order: new Int16Array(nFire),
+      depth: new Float32Array(nFire),
     };
-  }, [nSmoke]);
+  }, [nFire]);
 
-  // ── Fireball and shockwave: one billboard each ────────────────────────────
-  const billboards = useMemo(() => {
+  // ── The white-hot point, and the light the fire throws ────────────────────
+  const flash = useMemo(() => {
     const quad = new THREE.PlaneGeometry(1, 1);
-    // The ring is drawn as a RING, not a quad with a ring painted on it. At
-    // full size a quad covers the whole viewport, and every one of those
-    // pixels would run the shader to output nothing; the band is about a
-    // quarter of the area. Its UVs map the unit disc exactly as the quad's
-    // did, so the fragment shader is unchanged.
-    const band = new THREE.RingGeometry(0.62, 1, 96, 1);
-    const fire = new THREE.ShaderMaterial({
+    const mat = new THREE.ShaderMaterial({
       vertexShader: glsl(billboardVert),
-      fragmentShader: glsl(fireballFrag),
+      fragmentShader: glsl(flashFrag),
       glslVersion: GLSL3,
-      uniforms: { uSize: { value: 0 }, uTime: { value: 0 }, uSeed: { value: 0 } },
+      uniforms: { uSize: { value: F.flash.size }, uIntensity: { value: 0 } },
       transparent: true,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
-    const shock = new THREE.ShaderMaterial({
-      vertexShader: glsl(billboardVert),
-      fragmentShader: glsl(ringFrag),
-      glslVersion: GLSL3,
-      uniforms: {
-        uSize: { value: 0 },
-        uProgress: { value: 0 },
-        uWidth: { value: F.shockwave.width },
-        uIntensity: { value: F.shockwave.intensity },
-        uSeed: { value: 0 },
-      },
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    });
-    return { quad, band, fire, shock };
+    return { quad, mat };
+  }, []);
+
+  const fireLight = useMemo(() => {
+    const light = new THREE.PointLight(F.light.color, 0, F.light.distance, 2);
+    light.visible = false;
+    return light;
   }, []);
 
   useEffect(
@@ -224,14 +240,16 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
       shards.geo.dispose();
       shards.cold.dispose();
       shards.hot.dispose();
-      smoke.geo.dispose();
-      smoke.mat.dispose();
-      billboards.quad.dispose();
-      billboards.band.dispose();
-      billboards.fire.dispose();
-      billboards.shock.dispose();
+      fire.geo.dispose();
+      fire.mat.dispose();
+      fire.noise.dispose();
+      flash.quad.dispose();
+      flash.mat.dispose();
+      fireLight.dispose();
+      blastLensHandle.shock[3] = 0;
+      blastLensHandle.haze[3] = 0;
     },
-    [sparks, shards, smoke, billboards],
+    [sparks, shards, fire, flash, fireLight],
   );
 
   /**
@@ -246,20 +264,42 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
    * nothing bound, every program came out as a variant that is never used,
    * and the real ones were built on the detonation frame — measured at 184ms,
    * on the one frame that has to be clean.
+   *
+   * AND ONCE MORE WITH THE FIRE LIGHT ON, for everything it will light: the
+   * mark and the chips. `compile` reads the light set at the moment it is
+   * called, so the light is switched on around the calls and straight off
+   * again. It must not sit inside a subtree being compiled — `compile` counts
+   * the lights of the subtree AND the scene, and would build for two.
    */
+  const compiledMark = useRef<THREE.Object3D | null>(null);
+  const compileLit = (targets: THREE.Object3D[]) => {
+    const probe = new THREE.WebGLRenderTarget(1, 1);
+    const previous = gl.getRenderTarget();
+    gl.setRenderTarget(probe);
+    fireLight.visible = true;
+    const jobs = targets.map((t) => gl.compileAsync(t, camera, scene));
+    fireLight.visible = false;
+    gl.setRenderTarget(previous);
+    // A failed async compile only means the first detonation compiles inline,
+    // which is the behaviour this exists to avoid, not a break.
+    Promise.allSettled(jobs).finally(() => probe.dispose());
+  };
+
   useEffect(() => {
     if (!root.current) return;
     const probe = new THREE.WebGLRenderTarget(1, 1);
     const previous = gl.getRenderTarget();
     gl.setRenderTarget(probe);
     gl.compileAsync(root.current, camera, scene)
-      .catch(() => {
-        // A failed async compile only means the first detonation compiles
-        // inline, which is the behaviour this exists to avoid, not a break.
-      })
+      .catch(() => {})
       .finally(() => probe.dispose());
     gl.setRenderTarget(previous);
-  }, [gl, camera, scene, sparks, shards, smoke, billboards]);
+
+    const mark = markHandles.current.group;
+    compileLit(mark ? [root.current, mark] : [root.current]);
+    compiledMark.current = mark;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gl, camera, scene, sparks, shards, fire, flash, fireLight]);
 
   const st = useRef({
     active: false,
@@ -267,6 +307,9 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
     lastDetonation: blastHandle.detonations,
     center: new THREE.Vector3(),
     envBase: 1,
+    /** The mark's centre in uv, frozen at the detonation: the front leaves from where it was. */
+    uvX: 0.5,
+    uvY: 0.5,
   });
 
   const v = useMemo(() => new THREE.Vector3(), []);
@@ -275,6 +318,7 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
   const m4 = useMemo(() => new THREE.Matrix4(), []);
   const scl = useMemo(() => new THREE.Vector3(), []);
   const ax = useMemo(() => new THREE.Vector3(), []);
+  const fwd = useMemo(() => new THREE.Vector3(), []);
 
   const spawn = (now: number) => {
     const s = st.current;
@@ -284,19 +328,32 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
     const C = s.center;
     const anchors = markHandles.current.anchors;
 
-    // Sparks: from inside the object, in every direction.
+    // Sparks: from inside the object, in every direction. Most are slow; the
+    // speed is skewed so only a few streak across the frame.
+    const nFast = nSparks - nEmbers;
     for (let i = 0; i < nSparks; i++) {
+      const ember = i >= nFast;
       randomDir(dir);
-      const r0 = Math.random() * 0.35;
-      const speed = range(F.sparks.speed);
+      const r0 = Math.random() * (ember ? 0.5 : 0.3);
+      const speed = ember
+        ? range(F.sparks.ember.speed)
+        : F.sparks.speed[0] +
+          (F.sparks.speed[1] - F.sparks.speed[0]) * Math.pow(Math.random(), F.sparks.bias);
       sparks.pos[i * 3] = C.x + dir.x * r0;
       sparks.pos[i * 3 + 1] = C.y + dir.y * r0;
       sparks.pos[i * 3 + 2] = C.z + dir.z * r0;
       sparks.vel[i * 3] = dir.x * speed;
-      sparks.vel[i * 3 + 1] = dir.y * speed;
+      sparks.vel[i * 3 + 1] = dir.y * speed + (ember ? 0.4 : 0);
       sparks.vel[i * 3 + 2] = dir.z * speed;
-      sparks.life[i] = sparks.max[i] = range(F.sparks.life);
-      sparks.width[i] = rand(0.6, 1.4);
+      sparks.life[i] = sparks.max[i] = ember ? range(F.sparks.ember.life) : range(F.sparks.life);
+      sparks.width[i] = ember ? rand(0.9, 1.5) : rand(0.55, 1.3);
+      // Embers are born orange and never see white; a filing is born at a
+      // heat that decides whether it ever does.
+      sparks.heat[i] = ember ? rand(0.5, 0.68) : rand(0.78, 1);
+      sparks.seed[i] = Math.random();
+      sparks.drag[i] = ember ? F.sparks.ember.drag : F.sparks.drag;
+      sparks.gravity[i] = ember ? -F.sparks.ember.rise : F.sparks.gravity;
+      sparks.jitter[i] = ember ? F.sparks.ember.jitter : 0;
     }
 
     // Shards: broken off the actual parts, flung away from the core with a
@@ -325,27 +382,39 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
       shards.life[i] = range(F.shards.life);
     }
 
-    // Smoke: slow, low, drifting up.
-    for (let i = 0; i < nSmoke; i++) {
+    // Fire: billows thrown out of the core, fast at first and stalling, the
+    // hottest at the middle. A share of them ignite a beat late, so the ball
+    // keeps rolling for a moment instead of appearing whole on one frame.
+    for (let i = 0; i < nFire; i++) {
       randomDir(dir);
-      smoke.pos[i * 3] = C.x + dir.x * 0.3;
-      smoke.pos[i * 3 + 1] = C.y + dir.y * 0.3;
-      smoke.pos[i * 3 + 2] = C.z + dir.z * 0.3;
-      const speed = rand(0.3, 1.1);
-      smoke.vel[i * 3] = dir.x * speed;
-      smoke.vel[i * 3 + 1] = dir.y * speed * 0.6 + F.smoke.rise;
-      smoke.vel[i * 3 + 2] = dir.z * speed;
-      smoke.size[i] = range(F.smoke.size);
-      smoke.seed[i] = Math.random();
-      smoke.rot[i] = Math.random() * Math.PI * 2;
-      smoke.turn[i] = rand(-0.3, 0.3);
-      smoke.life[i] = smoke.max[i] = range(F.smoke.life);
+      const r0 = Math.random() * 0.14;
+      const speed = range(F.fire.speed);
+      fire.pos[i * 3] = C.x + dir.x * r0;
+      fire.pos[i * 3 + 1] = C.y + dir.y * r0;
+      fire.pos[i * 3 + 2] = C.z + dir.z * r0;
+      fire.vel[i * 3] = dir.x * speed;
+      fire.vel[i * 3 + 1] = dir.y * speed * 0.8 + 0.25;
+      fire.vel[i * 3 + 2] = dir.z * speed;
+      fire.size0[i] = range(F.fire.size);
+      fire.grow[i] = range(F.fire.grow);
+      fire.cool[i] = range(F.fire.cool);
+      fire.rise[i] = Math.random();
+      fire.delay[i] = Math.random() < F.fire.late ? rand(0.03, 0.14) : 0;
+      fire.age[i] = -fire.delay[i];
+      fire.life[i] = range(F.fire.life);
+      fire.rot[i] = Math.random() * Math.PI * 2;
+      fire.turn[i] = rand(-0.9, 0.9);
+      fire.seed[i] = Math.random();
     }
 
-    fireball.current.position.copy(C);
-    ring.current.position.copy(C);
-    billboards.fire.uniforms.uSeed.value = Math.random() * 100;
-    billboards.shock.uniforms.uSeed.value = Math.random() * 100;
+    flashMesh.current.position.copy(C);
+    fireLight.position.copy(C);
+
+    // Where the front leaves from, on screen. Frozen here: the camera is about
+    // to be jolted, and a front that followed the jolt would wobble.
+    v.copy(C).project(camera);
+    s.uvX = v.x * 0.5 + 0.5;
+    s.uvY = v.y * 0.5 + 0.5;
 
     s.envBase = scene.environmentIntensity;
     s.active = true;
@@ -358,7 +427,7 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
     const env = sceneState();
     const now = performance.now() / 1000;
 
-    // Where the mark is on screen, for the DOM wave. One frame behind the
+    // Where the mark is on screen, for the DOM strike. One frame behind the
     // camera, which nobody can see on the origin of a shockwave.
     const group = markHandles.current.group;
     if (group && env.shot === 'hero') {
@@ -368,6 +437,14 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
       blastHandle.centerValid = v.z < 1;
     } else {
       blastHandle.centerValid = false;
+    }
+
+    // The mark mounted after this did, so its lit programs were not built at
+    // mount. A press is two seconds of hold before anything can detonate —
+    // plenty for a parallel compile to land.
+    if (group && compiledMark.current !== group && blastHandle.held) {
+      compileLit([group]);
+      compiledMark.current = group;
     }
 
     if (blastHandle.detonations !== s.lastDetonation) {
@@ -384,32 +461,133 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
     const dt = Math.min(delta, 0.05);
 
     // ── Flash ───────────────────────────────────────────────────────────────
-    const flash = Math.exp((-t * 3) / F.flash.duration);
-    blastHandle.flash = flash > 0.002 ? flash : 0;
+    const flare = Math.exp((-t * 3) / F.flash.duration);
+    blastHandle.flash = flare > 0.002 ? flare : 0;
     scene.environmentIntensity = s.envBase * (1 + blastHandle.flash * (F.flash.env - 1));
 
-    // ── Core burn ───────────────────────────────────────────────────────────
-    const ft = t / F.fireball.duration;
-    fireball.current.visible = ft < 1;
-    if (ft < 1) {
-      billboards.fire.uniforms.uTime.value = ft;
-      billboards.fire.uniforms.uSize.value = F.fireball.size * (0.25 + 0.75 * (1 - (1 - ft) ** 3));
-    }
+    const core = Math.exp(-t / F.flash.core);
+    flashMesh.current.visible = core > 0.01;
+    flash.mat.uniforms.uIntensity.value = core;
+    flash.mat.uniforms.uSize.value = F.flash.size * (0.7 + 0.5 * (1 - core));
 
-    // ── Shockwave ───────────────────────────────────────────────────────────
-    // Decelerating, as a real front does once it has spent its overpressure.
-    const rt = t / F.shockwave.duration;
-    ring.current.visible = rt < 1;
-    if (rt < 1) {
-      billboards.shock.uniforms.uProgress.value = rt;
-      // The band's geometry is in radius units, so uSize IS the radius here
-      // (the quads are unit squares, where it is the diameter).
-      billboards.shock.uniforms.uSize.value = F.shockwave.radius * (1 - (1 - rt) ** 2.2) + 0.005;
-    }
+    // ── Fire light ──────────────────────────────────────────────────────────
+    // Dies with the heat, and gutters while it does: two incommensurate sines
+    // rather than noise, so it is the same at 60Hz and 144Hz.
+    const heat = Math.exp(-t / F.light.cool);
+    const gutter = 0.82 + 0.18 * Math.sin(t * 37) * Math.sin(t * 23 + 1.3);
+    fireLight.intensity = F.light.intensity * heat * gutter;
+    fireLight.position.y = s.center.y + 0.35 * (1 - Math.exp(-t * 2));
+    fireLight.visible = heat > 0.02;
 
-    // ── Sparks ──────────────────────────────────────────────────────────────
+    // ── The front and the shimmer ───────────────────────────────────────────
     {
-      const drag = Math.exp(-F.sparks.drag * dt);
+      const S = F.shockwave;
+      const rt = t / S.duration;
+      const L = blastLensHandle;
+      if (rt < 1) {
+        const r = S.radius * (1 - (1 - rt) ** 2.4);
+        L.shock[0] = s.uvX;
+        L.shock[1] = s.uvY;
+        L.shock[2] = r;
+        L.shock[3] = S.strength * (1 - rt) ** 1.6;
+        L.shockWidth = S.width + S.spread * r;
+      } else {
+        L.shock[3] = 0;
+      }
+
+      const H = F.haze;
+      const ht = t / H.duration;
+      if (ht < 1) {
+        L.haze[0] = s.uvX;
+        L.haze[1] = s.uvY + 0.06 + 0.05 * ht;
+        L.haze[2] = H.radius * (0.8 + 0.5 * ht);
+        // In over the first moment (the front owns the first frames), out slowly.
+        L.haze[3] = H.strength * Math.min(1, t / 0.15) * (1 - ht) ** 1.5;
+        L.hazeTime = t;
+      } else {
+        L.haze[3] = 0;
+      }
+    }
+
+    // ── Fire ────────────────────────────────────────────────────────────────
+    {
+      const Fi = F.fire;
+      const drag = Math.exp(-Fi.drag * dt);
+      const P = fire.attrs.iPos.array as Float32Array;
+      const D = fire.attrs.iData.array as Float32Array;
+      camera.getWorldDirection(fwd);
+      let n = 0;
+      /** Billows still to come or still burning — a late one keeps the mesh alive. */
+      let pending = false;
+      for (let i = 0; i < nFire; i++) {
+        fire.age[i] += dt;
+        const age = fire.age[i];
+        if (age >= fire.life[i]) continue;
+        pending = true;
+        if (age < 0) continue;
+        const k = i * 3;
+        const h = Math.exp(-age / fire.cool[i]);
+        // Hot gas rises, and keeps rising as smoke once it has cooled.
+        const lift = Fi.rise[0] + (Fi.rise[1] - Fi.rise[0]) * (0.4 + 0.6 * fire.rise[i]) * (1 - h * 0.6);
+        fire.vel[k] *= drag;
+        fire.vel[k + 1] = fire.vel[k + 1] * drag + lift * dt;
+        fire.vel[k + 2] *= drag;
+        fire.pos[k] += fire.vel[k] * dt;
+        fire.pos[k + 1] += fire.vel[k + 1] * dt;
+        fire.pos[k + 2] += fire.vel[k + 2] * dt;
+        fire.rot[i] += fire.turn[i] * dt;
+        fire.depth[n] =
+          (fire.pos[k] - camera.position.x) * fwd.x +
+          (fire.pos[k + 1] - camera.position.y) * fwd.y +
+          (fire.pos[k + 2] - camera.position.z) * fwd.z;
+        fire.order[n] = i;
+        n++;
+      }
+
+      // Far to near. Insertion sort: a couple of dozen entries, already
+      // nearly in order from the frame before, and no allocation.
+      for (let a = 1; a < n; a++) {
+        const idx = fire.order[a];
+        const d = fire.depth[a];
+        let b = a - 1;
+        while (b >= 0 && fire.depth[b] < d) {
+          fire.order[b + 1] = fire.order[b];
+          fire.depth[b + 1] = fire.depth[b];
+          b--;
+        }
+        fire.order[b + 1] = idx;
+        fire.depth[b + 1] = d;
+      }
+
+      for (let o = 0; o < n; o++) {
+        const i = fire.order[o];
+        const k = i * 3;
+        const age = fire.age[i];
+        const life = fire.life[i];
+        // Swells fast while it burns, then keeps spreading slowly as smoke.
+        const diameter =
+          fire.size0[i] + fire.grow[i] * (1 - Math.exp(-age * 5)) + Fi.swell * age;
+        const h = 1.15 * Math.exp(-age / fire.cool[i]);
+        const fadeIn = Math.min(1, age / 0.035);
+        const fadeOut = 1 - THREE.MathUtils.smoothstep(age, life * 0.5, life);
+        P[o * 4] = fire.pos[k];
+        P[o * 4 + 1] = fire.pos[k + 1];
+        P[o * 4 + 2] = fire.pos[k + 2];
+        P[o * 4 + 3] = fire.rot[i];
+        D[o * 4] = diameter;
+        D[o * 4 + 1] = h;
+        D[o * 4 + 2] = fadeIn * fadeOut;
+        D[o * 4 + 3] = fire.seed[i];
+      }
+      fire.geo.instanceCount = n;
+      fire.attrs.iPos.needsUpdate = true;
+      fire.attrs.iData.needsUpdate = true;
+      fire.mat.uniforms.uTime.value = t;
+      fireMesh.current.visible = pending;
+    }
+
+    // ── Sparks and embers ───────────────────────────────────────────────────
+    {
       const P = sparks.attrs.iPos.array as Float32Array;
       const V = sparks.attrs.iVel.array as Float32Array;
       const L = sparks.attrs.iLife.array as Float32Array;
@@ -419,9 +597,11 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
         sparks.life[i] -= dt;
         if (sparks.life[i] <= 0) continue;
         const k = i * 3;
-        sparks.vel[k] *= drag;
-        sparks.vel[k + 1] = sparks.vel[k + 1] * drag - F.sparks.gravity * dt;
-        sparks.vel[k + 2] *= drag;
+        const drag = Math.exp(-sparks.drag[i] * dt);
+        const j = sparks.jitter[i];
+        sparks.vel[k] = sparks.vel[k] * drag + (j > 0 ? (Math.random() - 0.5) * j * dt : 0);
+        sparks.vel[k + 1] = sparks.vel[k + 1] * drag - sparks.gravity[i] * dt;
+        sparks.vel[k + 2] = sparks.vel[k + 2] * drag + (j > 0 ? (Math.random() - 0.5) * j * dt : 0);
         sparks.pos[k] += sparks.vel[k] * dt;
         sparks.pos[k + 1] += sparks.vel[k + 1] * dt;
         sparks.pos[k + 2] += sparks.vel[k + 2] * dt;
@@ -432,8 +612,10 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
         V[o] = sparks.vel[k];
         V[o + 1] = sparks.vel[k + 1];
         V[o + 2] = sparks.vel[k + 2];
-        L[n * 2] = sparks.life[i] / sparks.max[i];
-        L[n * 2 + 1] = sparks.width[i];
+        L[n * 4] = sparks.life[i] / sparks.max[i];
+        L[n * 4 + 1] = sparks.width[i];
+        L[n * 4 + 2] = sparks.heat[i];
+        L[n * 4 + 3] = sparks.seed[i];
         n++;
       }
       sparks.geo.instanceCount = n;
@@ -441,6 +623,7 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
       sparks.attrs.iVel.needsUpdate = true;
       sparks.attrs.iLife.needsUpdate = true;
       sparks.mat.uniforms.uPixelRatio.value = gl.getPixelRatio();
+      sparks.mat.uniforms.uTime.value = t;
       gl.getDrawingBufferSize(sparks.mat.uniforms.uViewport.value);
       sparkMesh.current.visible = n > 0;
     }
@@ -485,51 +668,18 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
       shards.hot.emissiveIntensity = 4 * Math.exp((-t * 3) / F.shards.cool);
     }
 
-    // ── Smoke ───────────────────────────────────────────────────────────────
-    {
-      const drag = Math.exp(-0.9 * dt);
-      const P = smoke.attrs.iPos.array as Float32Array;
-      const D = smoke.attrs.iData.array as Float32Array;
-      let n = 0;
-      for (let i = 0; i < nSmoke; i++) {
-        if (smoke.life[i] <= 0) continue;
-        smoke.life[i] -= dt;
-        if (smoke.life[i] <= 0) continue;
-        const k = i * 3;
-        smoke.vel[k] *= drag;
-        smoke.vel[k + 1] = smoke.vel[k + 1] * drag + F.smoke.rise * dt;
-        smoke.vel[k + 2] *= drag;
-        smoke.pos[k] += smoke.vel[k] * dt;
-        smoke.pos[k + 1] += smoke.vel[k + 1] * dt;
-        smoke.pos[k + 2] += smoke.vel[k + 2] * dt;
-        smoke.size[i] *= 1 + F.smoke.grow * dt;
-        smoke.rot[i] += smoke.turn[i] * dt;
-        const o = n * 3;
-        P[o] = smoke.pos[k];
-        P[o + 1] = smoke.pos[k + 1];
-        P[o + 2] = smoke.pos[k + 2];
-        D[n * 4] = smoke.size[i];
-        D[n * 4 + 1] = smoke.life[i] / smoke.max[i];
-        D[n * 4 + 2] = smoke.seed[i];
-        D[n * 4 + 3] = smoke.rot[i];
-        n++;
-      }
-      smoke.geo.instanceCount = n;
-      smoke.attrs.iPos.needsUpdate = true;
-      smoke.attrs.iData.needsUpdate = true;
-      smoke.mat.uniforms.uHeat.value = Math.exp(-t * 7);
-      smokeMesh.current.visible = n > 0;
-    }
-
-    // Done when the last thing has died: hand the environment back exactly.
+    // Done when the last thing has died: hand the environment back exactly,
+    // and the lens back to its untouched path.
     const alive =
-      ft < 1 ||
-      rt < 1 ||
       blastHandle.flash > 0 ||
+      flashMesh.current.visible ||
+      fireLight.visible ||
+      blastLensHandle.shock[3] > 0 ||
+      blastLensHandle.haze[3] > 0 ||
+      fireMesh.current.visible ||
       sparkMesh.current.visible ||
       hotMesh.current.visible ||
-      coldMesh.current.visible ||
-      smokeMesh.current.visible;
+      coldMesh.current.visible;
     if (!alive) {
       s.active = false;
       blastHandle.flash = 0;
@@ -538,53 +688,50 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
   });
 
   return (
-    <group ref={root}>
-      {/* Order matters for the transparent layers: haze first, then the burn,
-          the ring and the filings over it. The chips are opaque. */}
-      <mesh
-        ref={smokeMesh}
-        geometry={smoke.geo}
-        material={smoke.mat}
-        frustumCulled={false}
-        renderOrder={10}
-        visible={false}
-      />
-      <instancedMesh
-        ref={coldMesh}
-        args={[shards.geo, shards.cold, Math.max(1, nShards - nHot)]}
-        frustumCulled={false}
-        visible={false}
-      />
-      <instancedMesh
-        ref={hotMesh}
-        args={[shards.geo, shards.hot, Math.max(1, nHot)]}
-        frustumCulled={false}
-        visible={false}
-      />
-      <mesh
-        ref={fireball}
-        geometry={billboards.quad}
-        material={billboards.fire}
-        frustumCulled={false}
-        renderOrder={11}
-        visible={false}
-      />
-      <mesh
-        ref={ring}
-        geometry={billboards.band}
-        material={billboards.shock}
-        frustumCulled={false}
-        renderOrder={12}
-        visible={false}
-      />
-      <mesh
-        ref={sparkMesh}
-        geometry={sparks.geo}
-        material={sparks.mat}
-        frustumCulled={false}
-        renderOrder={13}
-        visible={false}
-      />
-    </group>
+    <>
+      <group ref={root}>
+        {/* Order matters for the transparent layers: the fire first, then the
+            white-hot point and the filings over it. The chips are opaque. */}
+        <instancedMesh
+          ref={coldMesh}
+          args={[shards.geo, shards.cold, Math.max(1, nShards - nHot)]}
+          frustumCulled={false}
+          visible={false}
+        />
+        <instancedMesh
+          ref={hotMesh}
+          args={[shards.geo, shards.hot, Math.max(1, nHot)]}
+          frustumCulled={false}
+          visible={false}
+        />
+        <mesh
+          ref={fireMesh}
+          geometry={fire.geo}
+          material={fire.mat}
+          frustumCulled={false}
+          renderOrder={10}
+          visible={false}
+        />
+        <mesh
+          ref={flashMesh}
+          geometry={flash.quad}
+          material={flash.mat}
+          frustumCulled={false}
+          renderOrder={11}
+          visible={false}
+        />
+        <mesh
+          ref={sparkMesh}
+          geometry={sparks.geo}
+          material={sparks.mat}
+          frustumCulled={false}
+          renderOrder={12}
+          visible={false}
+        />
+      </group>
+      {/* Outside the group on purpose: the group is compiled as a subtree,
+          and a light inside it would be counted twice. See compileLit. */}
+      <primitive object={fireLight} />
+    </>
   );
 }

@@ -5,7 +5,6 @@ import { EffectComposer } from '@react-three/postprocessing';
 import {
   BlendFunction,
   BloomEffect,
-  ChromaticAberrationEffect,
   type EffectComposer as EffectComposerImpl,
   EffectPass,
   NoiseEffect,
@@ -15,6 +14,7 @@ import { useEffect, useMemo, useState } from 'react';
 import * as THREE from 'three';
 
 import { POST } from '@/config/animation';
+import { BlastLensEffect } from '@/scenes/blastLens';
 import { compactHdr, compactHdrSupported } from '@/scenes/compactHdr';
 
 /**
@@ -75,7 +75,9 @@ export function Effects({ mobile }: { mobile: boolean }) {
     });
     if (mobile) return { bloom, pass: new EffectPass(camera, bloom) };
 
-    const aberration = new ChromaticAberrationEffect({
+    // The aberration, carrying the blast's refraction — identical to
+    // ChromaticAberrationEffect while no blast is live. See scenes/blastLens.ts.
+    const aberration = new BlastLensEffect({
       offset: new THREE.Vector2(POST.chromaticAberration, POST.chromaticAberration * 0.6),
       radialModulation: true,
       modulationOffset: 0.32,

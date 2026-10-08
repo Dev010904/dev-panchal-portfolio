@@ -13,7 +13,7 @@ precision highp float;
 
 attribute vec3 iPos;   // world position now
 attribute vec3 iVel;   // world velocity, units/s
-attribute vec2 iLife;  // x: remaining life 0..1, y: per-spark width scale
+attribute vec4 iLife;  // x: remaining life 0..1, y: width scale, z: heat at birth 0..1, w: seed
 
 uniform float uTrail;      // seconds of travel the streak shows
 uniform float uWidth;      // CSS px
@@ -21,10 +21,14 @@ uniform float uPixelRatio;
 uniform vec2  uViewport;   // drawing-buffer px
 
 varying float vLife;
+varying float vHeat;
+varying float vSeed;
 varying vec2 vQuad;
 
 void main() {
   vLife = iLife.x;
+  vHeat = iLife.z;
+  vSeed = iLife.w;
   // The plane spans [-0.5, 0.5]: x runs tail → head, y across the streak.
   vQuad = position.xy + 0.5;
 
