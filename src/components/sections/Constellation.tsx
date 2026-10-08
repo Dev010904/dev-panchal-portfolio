@@ -3,6 +3,7 @@
 import { useRef } from 'react';
 
 import { CLUSTERS, EDGES, STACK } from '@/data/stack';
+import { useCameraTravel } from '@/components/useCameraTravel';
 import { useSectionShot } from '@/components/useSectionShot';
 import { CornerMarks, SectionTag, useRailFade } from '@/components/ui/primitives';
 import { useScene } from '@/store/scene';
@@ -38,6 +39,9 @@ export function Constellation() {
   useRailFade(rail);
 
   useSectionShot(root, 'constellation', 'CONSTELLATION');
+  // Up the shaft from the Lab, past the mark, as this section rises into
+  // view; see TRAVEL.
+  useCameraTravel(root, 'toConstellation', 'top 55%');
 
   const focus = useScene((s) => s.constellationFocus);
   const isMobile = useScene((s) => s.isMobile);

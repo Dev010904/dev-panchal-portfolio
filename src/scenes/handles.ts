@@ -1,3 +1,5 @@
+import type { TravelRoute } from '@/config/animation';
+
 import type { MarkHandles } from './MarkObject';
 
 /**
@@ -127,6 +129,30 @@ export const workHandle = {
   focus: 0,
   /** Index the pointer is over, or -1. */
   hover: -1,
+  /**
+   * 0..1, how present the focused card's copy should be. Written by the scene
+   * from the ribbon's damped position, so the title and links arrive with the
+   * first card at the apex rather than with the section's first pixel — they
+   * used to sit on screen over the mark for a whole viewport of scroll before
+   * any work had appeared. 0 until the scene has mounted.
+   */
+  copy: 0,
+};
+
+/**
+ * THE TRAVEL BAND IN PROGRESS — see TRAVEL in config/animation.
+ *
+ * Written by the section that owns the band (components/useCameraTravel) from
+ * its ScrollTrigger, read by the camera rig, the instrument shaft and the work
+ * headline. `p` is the scrolled fraction of the band, 0 at the previous
+ * section's pose and 1 at the next one's.
+ */
+export const travelHandle = {
+  active: false,
+  route: 'toWork' as TravelRoute,
+  p: 0,
+  /** The camera's own velocity, world units/s, written by the rig every frame. */
+  velocity: [0, 0, 0] as [number, number, number],
 };
 
 /**
@@ -292,6 +318,9 @@ export function resetHandles() {
   workHandle.position = 0;
   workHandle.focus = 0;
   workHandle.hover = -1;
+  workHandle.copy = 0;
+  travelHandle.active = false;
+  travelHandle.p = 0;
   archiveHandle.scroll = 0;
   archiveHandle.hover = -1;
   wipeHandle.value = 0;

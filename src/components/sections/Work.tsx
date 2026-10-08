@@ -7,6 +7,8 @@ import { primaryLink, projects } from '@/data/projects';
 import { gsap, ScrollTrigger, useGsap } from '@/lib/gsap';
 import { ArrowLink } from '@/components/ui/ArrowLink';
 import { CornerMarks, RAIL_TOP, SectionTag, useRailFade } from '@/components/ui/primitives';
+import { useCameraTravel } from '@/components/useCameraTravel';
+import { useTicker } from '@/lib/useTicker';
 import { workHandle } from '@/scenes/handles';
 import { useScene } from '@/store/scene';
 
@@ -39,6 +41,10 @@ export function Work() {
 
   const index = useScene((s) => s.workIndex);
   const project = projects[Math.min(index, projects.length - 1)];
+
+  // The camera comes down from the mark to the work as this section rises
+  // into view, and arrives exactly as the pin takes hold — see TRAVEL.
+  useCameraTravel(root, 'toWork', 'top top');
 
   // Start loading the screenshots a full viewport before they are needed.
   useEffect(() => {
@@ -126,6 +132,28 @@ export function Work() {
   // on type this large is the kind of jump that makes a scroll feel like it is
   // stepping through slides.
   const meta = useRef<HTMLDivElement>(null);
+
+  /**
+   * ...and absent until there is a card for it to describe.
+   *
+   * The pinned panel is on screen for a whole viewport before the pin takes
+   * hold, and the copy used to ride in with it: KAAM KARO's title, summary and
+   * links sat over the MARK, then over a black frame while the camera flew,
+   * and only then did any work appear. Now it follows `workHandle.copy`, which
+   * the scene derives from the ribbon itself — in with the first card at the
+   * apex, out with the last. Written straight to the style, only on change.
+   */
+  const copyShown = useRef(-1);
+  useTicker(() => {
+    const el = meta.current;
+    if (!el) return;
+    const v = Math.round(workHandle.copy * 1000) / 1000;
+    if (v === copyShown.current) return;
+    copyShown.current = v;
+    el.style.opacity = String(v);
+    el.style.transform = v >= 1 ? '' : `translate3d(0, ${((1 - v) * 26).toFixed(1)}px, 0)`;
+    el.style.visibility = v <= 0 ? 'hidden' : '';
+  });
   useGsap(
     () => {
       const el = meta.current;
@@ -166,6 +194,8 @@ export function Work() {
         <div
           ref={meta}
           className="grid12 pointer-events-none absolute inset-x-0 bottom-[clamp(2rem,7vh,4.5rem)] z-20 items-end"
+          // Hidden until the scene says a card is at the apex; see above.
+          style={{ opacity: 0, visibility: 'hidden' }}
         >
           <div className="pointer-events-auto col-span-12 flex flex-col gap-4 md:col-span-6 lg:col-span-5">
             {project.context && (

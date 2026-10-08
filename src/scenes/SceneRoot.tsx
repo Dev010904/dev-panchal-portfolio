@@ -18,6 +18,7 @@ import { pointerHandle } from '@/lib/pointer';
 import { CAMERA, DPR, LAB, MOBILE, SHOTS } from '@/config/animation';
 import { AnnotationProjector } from './AnnotationProjector';
 import { BlastFX } from './BlastFX';
+import { Shaft } from './Shaft';
 import { CameraRig } from './CameraRig';
 import { compactTransmissionTarget } from './compactHdr';
 import { DevLoop } from './DevLoop';
@@ -297,6 +298,9 @@ export function SceneRoot() {
               the same reason as above: it spawns from the parts' anchors, and
               must read this frame's positions, not last frame's. */}
             <BlastFX quality={quality} />
+            {/* What the camera travels past between sections. Hidden except
+              inside a travel band — see TRAVEL and SHAFT. */}
+            <Shaft quality={quality} />
             {/* Three hairline arcs. Real geometry, so the mark occludes them. */}
             <SweepLines />
             <AnnotationProjector />

@@ -4,8 +4,8 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 
-import { BLAST, CAMERA, DECONSTRUCTION, SHOTS, type ShotName } from '@/config/animation';
-import { blastHandle, markHandles } from '@/scenes/handles';
+import { BLAST, CAMERA, DECONSTRUCTION, SHOTS, TRAVEL, type ShotName } from '@/config/animation';
+import { blastHandle, markHandles, travelHandle } from '@/scenes/handles';
 import { sceneState } from '@/store/scene';
 
 /**
@@ -16,10 +16,12 @@ import { sceneState } from '@/store/scene';
  * which means every camera key in the config is a rig pose rather than a world
  * coordinate — retiming or reframing never requires re-deriving positions.
  *
- * Two drivers, in priority order:
+ * Three drivers, in priority order:
  *   1. The Deconstruction scrub, when it is active. Camera keys are laid out
  *      along the same normalised master timeline as the geometry.
- *   2. Otherwise, an eased approach toward the current section's shot.
+ *   2. A travel band between two sections, when one is in progress: the pose
+ *      is solved from the scroll (see TRAVEL and resolveTravel below).
+ *   3. Otherwise, an eased approach toward the current section's shot.
  *
  * Elevation is clamped away from ±90° — at the poles the up vector degenerates
  * and the camera rolls, which looks like a bug even when it is trigonometry.
@@ -44,6 +46,7 @@ export function CameraRig() {
   const target = useRef(new THREE.Vector3(...SHOTS.hero.target));
   const parallax = useRef(new THREE.Vector2());
 
+  const lastPos = useRef<THREE.Vector3 | null>(null);
   const goalOrbit = useMemo(() => new THREE.Vector3(), []);
   const goalTarget = useMemo(() => new THREE.Vector3(), []);
   const a = useMemo(() => new THREE.Vector3(), []);
@@ -70,8 +73,12 @@ export function CameraRig() {
     const p = markHandles.current.progress.value;
     const scrubbing = p > 0.0005 && p < 0.9995;
 
+    const travelling = !scrubbing && travelHandle.active;
+
     if (scrubbing) {
       resolveTrack(p, goalOrbit, goalTarget, a, b);
+    } else if (travelling) {
+      resolveTravel(goalOrbit, goalTarget, a, b);
     } else {
       const shot = SHOTS[s.shot as ShotName];
       goalOrbit.set(...shot.orbit);
@@ -81,8 +88,9 @@ export function CameraRig() {
     goalOrbit.x *= distanceScale;
 
     // Frame-rate independent damping. `1 - exp(-k*dt)` rather than a fixed
-    // lerp factor, so the feel does not change on a 120Hz display.
-    const k = scrubbing ? 9.5 : 3.2;
+    // lerp factor, so the feel does not change on a 120Hz display. A camera
+    // driven by scroll follows closely; one easing to a shot takes its time.
+    const k = scrubbing || travelling ? 9.5 : 3.2;
     const f = 1 - Math.exp(-k * Math.min(delta, 0.05));
     orbit.current.lerp(goalOrbit, f);
     target.current.lerp(goalTarget, f);
@@ -128,9 +136,61 @@ export function CameraRig() {
     }
 
     camera.lookAt(target.current);
+
+    // Published for the instrument shaft's dust, which streaks along the
+    // camera's own motion. Clamped: a jump (the menu's wipe, a route change)
+    // is a teleport, not a velocity.
+    const dt = Math.max(Math.min(delta, 0.05), 1e-3);
+    const v = travelHandle.velocity;
+    if (lastPos.current) {
+      v[0] = THREE.MathUtils.clamp((camera.position.x - lastPos.current.x) / dt, -160, 160);
+      v[1] = THREE.MathUtils.clamp((camera.position.y - lastPos.current.y) / dt, -160, 160);
+      v[2] = THREE.MathUtils.clamp((camera.position.z - lastPos.current.z) / dt, -160, 160);
+      lastPos.current.copy(camera.position);
+    } else {
+      lastPos.current = camera.position.clone();
+    }
   });
 
   return null;
+}
+
+/**
+ * The pose a fraction `p` of the way through the current travel band.
+ *
+ * The orbit (radius, azimuth, elevation) eases with a smoothstep and the
+ * target with a smootherstep. The target is what carries the long vertical
+ * distance, and smootherstep's flatter ends are what let the mark leave the
+ * frame — and the next section arrive in it — at a walking pace while the
+ * empty middle goes by quickly. The bulge rides a sine over the band, so it is
+ * zero at both ends and the band starts and finishes exactly on its two shots.
+ */
+function resolveTravel(
+  outOrbit: THREE.Vector3,
+  outTarget: THREE.Vector3,
+  a: THREE.Vector3,
+  b: THREE.Vector3,
+) {
+  const route = TRAVEL[travelHandle.route];
+  const p = THREE.MathUtils.clamp(travelHandle.p, 0, 1);
+  const smooth = p * p * (3 - 2 * p);
+  const smoother = p * p * p * (p * (p * 6 - 15) + 10);
+  const bump = Math.sin(Math.PI * p);
+
+  const s0 = SHOTS[route.from];
+  const s1 = SHOTS[route.to];
+
+  a.set(...s0.orbit);
+  b.set(...s1.orbit);
+  b.y = a.y + shortAngle(a.y, b.y);
+  outOrbit.copy(a).lerp(b, smooth);
+  outOrbit.x += route.bulge[0] * bump;
+  outOrbit.y += route.bulge[1] * bump;
+  outOrbit.z += route.bulge[2] * bump;
+
+  a.set(...s0.target);
+  b.set(...s1.target);
+  outTarget.copy(a).lerp(b, smoother);
 }
 
 /** Piecewise-linear walk along DECON_TRACK, eased within each leg. */

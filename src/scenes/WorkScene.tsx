@@ -4,13 +4,16 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 
-import { WORK, WORK_ORIGIN_Y } from '@/config/animation';
+import { TRAVEL, WORK, WORK_ORIGIN_Y } from '@/config/animation';
 import { primaryLink, projects, type Project } from '@/data/projects';
 import { GLSL3, glsl } from '@/lib/glsl';
 import { drawHeadline } from '@/lib/headlineTexture';
 import frag from '@/shaders/card.frag';
 import vert from '@/shaders/card.vert';
-import { workHandle } from '@/scenes/handles';
+import headlineFrag from '@/shaders/headline.frag';
+import headlineVert from '@/shaders/headline.vert';
+import { travelHandle, workHandle } from '@/scenes/handles';
+import { prewarm } from '@/scenes/prewarm';
 import { sceneState, useScene } from '@/store/scene';
 
 /**
@@ -273,6 +276,14 @@ function Driver({
         .multiplyScalar(ribbonRunOut(workHandle.position, from, to));
     }
 
+    // The focused card's copy (DOM, in Work.tsx) arrives with the first card
+    // at the apex and leaves with the last one, off the same damped position,
+    // so the title never sits on screen over an empty arc.
+    const pos = workHandle.position;
+    const copyIn = THREE.MathUtils.smoothstep(pos, from - 0.6, from - 0.05);
+    const copyOut = 1 - THREE.MathUtils.smoothstep(pos, to + 0.05, to + 0.6);
+    workHandle.copy = s.reducedMotion ? 1 : copyIn * copyOut;
+
     const focus = THREE.MathUtils.clamp(Math.round(workHandle.position), 0, count - 1);
     if (focus !== workHandle.focus) {
       workHandle.focus = focus;
@@ -447,11 +458,27 @@ function Card({
  * `depthTest` on, so the opaque cards drawn before it in the frame occlude it.
  * That asymmetry is the whole trick: the apex card passes in front of the type
  * and the receding ones pass behind.
+ *
+ * It is not simply faded in any more. It used to appear on a timer as the
+ * section became active — a grey slab, arriving after the camera, with nothing
+ * to do with how the visitor got there. Now it is part of the journey:
+ *
+ *   - coming down the shaft, the OUTLINE is drawn in left to right behind an
+ *     ember scan line (the last stretch of the travel band);
+ *   - as the cards sweep in, the FILL follows across (the ribbon's entry);
+ *   - leaving, both run back out — with the ribbon's exit, and with the band
+ *     that takes the camera up to the achievement.
+ *
+ * Every one of those is read off a playhead the visitor's scroll already
+ * drives, so it runs backwards exactly as well as forwards.
  */
 function Headline() {
   const [drawn, setDrawn] = useState<ReturnType<typeof drawHeadline>>(null);
-  const mat = useRef<THREE.MeshBasicMaterial>(null!);
-  const fade = useRef(0);
+  const mesh = useRef<THREE.Mesh>(null!);
+  const arrive = useRef(0);
+  const gl = useThree((s) => s.gl);
+  const camera = useThree((s) => s.camera);
+  const scene = useThree((s) => s.scene);
 
   useEffect(() => {
     let cancelled = false;
@@ -461,7 +488,7 @@ function Headline() {
     // headline set in the fallback, permanently, with no error.
     document.fonts.ready.then(() => {
       if (cancelled) return;
-      made = drawHeadline(WORK.headline.lines, WORK.headline.resolution, WORK.headline.value);
+      made = drawHeadline(WORK.headline.lines, WORK.headline.resolution);
       setDrawn(made);
     });
 
@@ -471,13 +498,78 @@ function Headline() {
     };
   }, []);
 
+  const material = useMemo(() => {
+    // The grey is specified as the value that lands on screen; the shader
+    // works in linear, and the output pass encodes it back.
+    const v = WORK.headline.value;
+    const linear = new THREE.Color().setRGB(v, v, v, THREE.SRGBColorSpace).r;
+    return new THREE.ShaderMaterial({
+      vertexShader: glsl(headlineVert),
+      fragmentShader: glsl(headlineFrag),
+      glslVersion: GLSL3,
+      uniforms: {
+        uMap: { value: null },
+        uDraw: { value: 0 },
+        uFill: { value: 0 },
+        uValue: { value: linear },
+        uTime: { value: 0 },
+        uEmber: { value: new THREE.Color('#ff5a1f') },
+      },
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.CustomBlending,
+      blendEquation: THREE.AddEquation,
+      blendSrc: THREE.OneFactor,
+      blendDst: THREE.OneMinusSrcAlphaFactor,
+    });
+  }, []);
+
+  useEffect(() => () => material.dispose(), [material]);
+
+  useEffect(() => {
+    if (!drawn || !mesh.current) return;
+    material.uniforms.uMap.value = drawn.texture;
+    prewarm(gl, mesh.current, camera, scene);
+  }, [drawn, material, gl, camera, scene]);
+
   useFrame((_, delta) => {
-    if (!mat.current) return;
+    const m = mesh.current;
+    if (!m) return;
     const s = sceneState();
     const dt = Math.min(delta, 0.05);
-    const goal = s.activeSection === 'WORK' ? 1 : 0;
-    fade.current += (goal - fade.current) * (1 - Math.exp(-2.2 * dt));
-    mat.current.opacity = s.reducedMotion ? goal : fade.current;
+    const T = travelHandle;
+    const A = WORK.arc;
+
+    // Is the camera here? Inside a band touching the work, the scroll says;
+    // otherwise, the shot does.
+    let goal: number;
+    let rate = 3;
+    if (T.active && TRAVEL[T.route].to === 'work') {
+      goal = THREE.MathUtils.smoothstep(T.p, 0.5, 0.96);
+      rate = 14;
+    } else if (T.active && TRAVEL[T.route].from === 'work') {
+      goal = 1 - THREE.MathUtils.smoothstep(T.p, 0, 0.45);
+      rate = 14;
+    } else {
+      goal = s.shot === 'work' ? 1 : 0;
+    }
+    arrive.current += (goal - arrive.current) * (1 - Math.exp(-rate * dt));
+    if (s.reducedMotion) arrive.current = goal;
+
+    // The ribbon's entry and exit, off its damped position.
+    const from = -A.overscan;
+    const to = projects.length - 1 + A.overscan;
+    const lead = A.sweep.lead;
+    const pos = workHandle.position;
+    const entry = THREE.MathUtils.clamp((pos - (from - lead)) / lead, 0, 1);
+    const exit = 1 - THREE.MathUtils.clamp((pos - to) / lead, 0, 1);
+
+    const draw = arrive.current * exit;
+    const fill = Math.min(arrive.current, entry, exit);
+    material.uniforms.uDraw.value = draw;
+    material.uniforms.uFill.value = s.reducedMotion ? draw : fill;
+    material.uniforms.uTime.value += dt;
+    m.visible = draw > 0.002;
   });
 
   if (!drawn) return null;
@@ -485,17 +577,14 @@ function Headline() {
   const w = WORK.headline.width;
 
   return (
-    <mesh position={WORK.headline.position} renderOrder={2}>
+    <mesh
+      ref={mesh}
+      position={WORK.headline.position}
+      renderOrder={2}
+      material={material}
+      visible={false}
+    >
       <planeGeometry args={[w, w / drawn.aspect]} />
-      <meshBasicMaterial
-        ref={mat}
-        map={drawn.texture}
-        transparent
-        depthWrite={false}
-        toneMapped={false}
-        fog={false}
-        opacity={0}
-      />
     </mesh>
   );
 }

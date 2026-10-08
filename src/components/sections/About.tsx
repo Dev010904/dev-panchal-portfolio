@@ -4,6 +4,7 @@ import { useRef } from 'react';
 
 import { site } from '@/data/site';
 import { gsap, useGsap } from '@/lib/gsap';
+import { useCameraTravel } from '@/components/useCameraTravel';
 import { useSectionShot } from '@/components/useSectionShot';
 import { SectionTag, useRailFade } from '@/components/ui/primitives';
 import { useScene } from '@/store/scene';
@@ -27,6 +28,9 @@ export function About() {
   const reducedMotion = useScene((s) => s.reducedMotion);
 
   useSectionShot(root, 'about', 'ABOUT');
+  // Back down from the stack to the mark as this section rises into view;
+  // see TRAVEL.
+  useCameraTravel(root, 'toAbout', 'top 55%');
 
   useGsap(
     () => {

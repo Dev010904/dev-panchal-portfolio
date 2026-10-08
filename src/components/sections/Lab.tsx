@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { BLAST } from '@/config/animation';
 import { gsap, useGsap } from '@/lib/gsap';
+import { useCameraTravel } from '@/components/useCameraTravel';
 import { useSectionShot } from '@/components/useSectionShot';
 import { CornerMarks, SectionTag, useRailFade } from '@/components/ui/primitives';
 import { useScene } from '@/store/scene';
@@ -26,6 +27,8 @@ export function Lab() {
   const hint = useRef<HTMLSpanElement>(null);
 
   useSectionShot(root, 'lab', 'LAB');
+  // Up from the achievement as this section rises into view; see TRAVEL.
+  useCameraTravel(root, 'toLab', 'top 55%');
 
   const reducedMotion = useScene((s) => s.reducedMotion);
   const active = useScene((s) => s.activeSection === 'LAB');

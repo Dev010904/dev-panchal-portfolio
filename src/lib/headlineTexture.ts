@@ -18,6 +18,14 @@ import * as THREE from 'three';
  * Only use this for type at display size. At body size a texture loses to real
  * subpixel-rendered DOM text every time — which is why the Deconstruction's
  * annotations are DOM elements tracking projected 3D anchors instead.
+ *
+ * TWO LAYERS, ONE TEXTURE. The type is drawn twice into separate channels:
+ * red holds the filled glyphs, green a hairline outline of the same glyphs.
+ * The work headline's shader (shaders/headline.frag) draws the outline in
+ * first, like a drawing being set out, and then fills it — which needs the two
+ * as independent masks, not as one picture. The canvas is opaque black with
+ * the layers added on top, so the channels are pure coverage and nothing is
+ * lost to premultiplied alpha on upload.
  */
 
 export interface HeadlineTexture {
@@ -27,11 +35,7 @@ export interface HeadlineTexture {
   dispose: () => void;
 }
 
-export function drawHeadline(
-  lines: readonly string[],
-  width: number,
-  value: number,
-): HeadlineTexture | null {
+export function drawHeadline(lines: readonly string[], width: number): HeadlineTexture | null {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
@@ -63,11 +67,16 @@ export function drawHeadline(
   canvas.width = width;
   canvas.height = height;
 
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, width, height);
+
   ctx.font = `${weight} ${size}px ${family}`;
   ctx.textBaseline = 'alphabetic';
-  ctx.fillStyle = `rgb(${Math.round(242 * value)}, ${Math.round(242 * value)}, ${Math.round(
-    240 * value,
-  )})`;
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = '#ff0000';
+  ctx.strokeStyle = '#00ff00';
+  ctx.lineWidth = Math.max(2, size * 0.011);
+  ctx.lineJoin = 'round';
 
   const letterSpacing = tracking * size;
 
@@ -79,12 +88,14 @@ export function drawHeadline(
     const y = size * 0.82 + i * lineHeight;
     for (const ch of line) {
       ctx.fillText(ch, x, y);
+      ctx.strokeText(ch, x, y);
       x += ctx.measureText(ch).width + letterSpacing;
     }
   });
 
   const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
+  // Masks, not colour: read back exactly as written.
+  texture.colorSpace = THREE.NoColorSpace;
   texture.minFilter = THREE.LinearMipmapLinearFilter;
   texture.magFilter = THREE.LinearFilter;
   texture.generateMipmaps = true;

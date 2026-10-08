@@ -12,9 +12,10 @@ import {
   LENS,
   MARK_AMBIENT,
   shotPresence,
+  TRAVEL,
   type ShotName,
 } from '@/config/animation';
-import { blastHandle, glassHandle } from '@/scenes/handles';
+import { blastHandle, glassHandle, travelHandle } from '@/scenes/handles';
 import { MARK_LAYER } from '@/scenes/lightDepth';
 import { GLSL3, glsl } from '@/lib/glsl';
 import { buildMark, buildPins, sampleMarkSurface } from '@/lib/mark/geometry';
@@ -396,7 +397,15 @@ export function MarkObject({
 
     // Per-shot presence. Damped rather than switched so arriving at About
     // fades the object back instead of dimming it on one frame.
-    const goalPresence = frozen ? 1 : shotPresence(s.shot as ShotName);
+    // In a travel band the presence moves with the camera, so arriving at a
+    // section that holds the mark back (About) dims it as the scroll arrives,
+    // not on a timer after the band has already finished.
+    let goalPresence = frozen ? 1 : shotPresence(s.shot as ShotName);
+    if (!frozen && travelHandle.active) {
+      const route = TRAVEL[travelHandle.route];
+      const t = THREE.MathUtils.smoothstep(travelHandle.p, 0, 1);
+      goalPresence = THREE.MathUtils.lerp(shotPresence(route.from), shotPresence(route.to), t);
+    }
     presence.current += (goalPresence - presence.current) * (1 - Math.exp(-2.6 * dt));
 
     // ── Blast ───────────────────────────────────────────────────────────────

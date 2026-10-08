@@ -5,6 +5,7 @@ import { useRef } from 'react';
 import { ACHIEVEMENT } from '@/config/animation';
 import { achievement } from '@/data/credentials';
 import { gsap, useGsap } from '@/lib/gsap';
+import { useCameraTravel } from '@/components/useCameraTravel';
 import { useSectionShot } from '@/components/useSectionShot';
 import { ArrowLink } from '@/components/ui/ArrowLink';
 import { SectionTag, useCursorTarget, useRailFade } from '@/components/ui/primitives';
@@ -36,6 +37,8 @@ export function Achievements() {
   // (the default 'top 55%' is too late for a move this long) so the travel has
   // settled by the time the number is being read.
   useSectionShot(root, 'credits', 'ACHIEVEMENT', 'top 78%');
+  // Up from the work as this section rises into view; see TRAVEL.
+  useCameraTravel(root, 'toCredits', 'top 78%');
 
   useGsap(
     () => {

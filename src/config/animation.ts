@@ -417,6 +417,90 @@ export const SHOTS = {
 export type ShotName = keyof typeof SHOTS;
 
 /**
+ * THE TRAVEL BANDS — section to section, the camera moves as far as you scroll.
+ *
+ * Every move between home-page sections used to be a timed flight: a section
+ * crossed its trigger line, the shot switched, and the camera eased to the new
+ * pose on its own clock. For a reframe that is fine. For the long vertical
+ * moves it was not — the mark to the work is 60 units, the frame is ~3 units
+ * tall at the mark, so the logo was gone in a fraction of a second and the rest
+ * of the flight was black, whatever the visitor's hand was doing.
+ *
+ * A band is a stretch of scroll — from the moment the next section's top
+ * enters the viewport to the line where its shot used to fire — over which
+ * the camera is solved from the scroll itself (see CameraRig, resolveTravel).
+ * Scroll halfway, the camera is halfway; scroll back, it goes back. The band
+ * ENDS exactly where the section's own shot takes over, at the same pose, so
+ * the resting views are untouched.
+ *
+ * The path is shaped, not a straight line. The vertical travel is a
+ * smootherstep, so the camera leaves and arrives gently and covers the empty
+ * middle fast. `bulge` is added to the orbit [radius, azimuth°, elevation°] in
+ * a sine over the band: the camera pulls back and swings out mid-move, so it
+ * reads as one crane shot through a room rather than a lift between floors.
+ * The instrument shaft (scenes/Shaft.tsx) gives that middle something to be.
+ */
+export const TRAVEL = {
+  /** The mark down to the work. Looks down the shaft on the way. */
+  toWork: { from: 'hero', to: 'work', bulge: [11, 12, 17] },
+  /** The work up to the achievement. Short; a small lift. */
+  toCredits: { from: 'work', to: 'credits', bulge: [2.5, 0, 0] },
+  /** The achievement up to the Lab field. */
+  toLab: { from: 'credits', to: 'lab', bulge: [4, -8, 6] },
+  /** The Lab up past the mark to the stack, looking up the shaft. */
+  toConstellation: { from: 'lab', to: 'constellation', bulge: [10, -10, -14] },
+  /** The stack back down to the mark. */
+  toAbout: { from: 'constellation', to: 'about', bulge: [7, 8, 10] },
+} as const satisfies Record<
+  string,
+  { from: ShotName; to: ShotName; bulge: readonly [number, number, number] }
+>;
+export type TravelRoute = keyof typeof TRAVEL;
+
+/**
+ * THE INSTRUMENT SHAFT — what the camera travels through between sections.
+ *
+ * A datum line with depth ticks, a label at every ten units and at every
+ * place a section lives (0 · MARK, −30 · LAB, −60 · WORK, +30 · STACK), two
+ * faint guide lines for parallax, and a column of dust drawn as streaks whose
+ * length follows the camera's own velocity — the one thing that makes a fall
+ * through an empty room read as speed. It is the site's drawing-sheet language
+ * (datums, dimensions, ticks) applied to the space between the drawings.
+ *
+ * Only ever seen in transit: its opacity is a bump over the band, zero at both
+ * ends, and the whole group is hidden outside a band.
+ */
+export const SHAFT = {
+  /** Vertical extent, world units. Inside every band's start and end frames. */
+  top: 27.5,
+  bottom: -57.5,
+  /** The datum line, world [x, z]. Right of centre, a little behind. */
+  line: [1.25, -1.1] as [number, number],
+  /** Faint guide lines for parallax, world [x, z]. */
+  guides: [
+    [-5.4, -5.2],
+    [5.2, -7.4],
+  ] as [number, number][],
+  minorEvery: 1,
+  majorEvery: 5,
+  labelEvery: 10,
+  minorLength: 0.16,
+  majorLength: 0.46,
+  /** Where each section lives, labelled on the datum. */
+  datums: [
+    { y: 30, text: '+30 · STACK' },
+    { y: 0, text: '0 · MARK' },
+    { y: -30, text: '−30 · LAB' },
+    { y: -60, text: '−60 · WORK' },
+  ],
+  /** Label height in world units. */
+  labelHeight: 0.15,
+  dust: { count: 520, countLow: 240, spread: [16, 13] as [number, number], trail: 0.05, maxLength: 3 },
+  /** Peak opacity of the line work and of the dust. */
+  opacity: { line: 0.55, guide: 0.22, dust: 0.5 },
+} as const;
+
+/**
  * How solid the mark is in a given shot, 0..1.
  *
  * Only shots that want the object pushed into the background declare it. The
