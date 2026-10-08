@@ -6,6 +6,7 @@ import * as THREE from 'three';
 
 import { BLAST, LAB, LAB_ORIGIN_Y, MOBILE } from '@/config/animation';
 import { blastHandle } from '@/scenes/handles';
+import { travelPresence } from '@/scenes/travel';
 import { GLSL3, glsl } from '@/lib/glsl';
 import { textToPoints } from '@/lib/textPoints';
 import frag from '@/shaders/labField.frag';
@@ -217,7 +218,11 @@ export function LabField({
     uniforms.uFrozen.value = s.reducedMotion ? 1 : 0;
 
     // Fade + resolve when the section is in view.
-    const goal = active ? 1 : 0;
+    // Inside a band to or from this place, the camera's progress decides;
+    // otherwise the section does. See scenes/travel.
+    // Never while the GPU field is the one drawing — exactly one of the two
+    // ever draws (see LabFields in SceneRoot).
+    const goal = gpuActive ? 0 : (travelPresence('lab') ?? (active ? 1 : 0));
     opacity.current += (goal - opacity.current) * (1 - Math.exp(-3.4 * dt));
     formation.current += (goal - formation.current) * (1 - Math.exp(-2.1 * dt));
 

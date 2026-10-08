@@ -8,6 +8,7 @@ import { CONSTELLATION, CONSTELLATION_ORIGIN_Y } from '@/config/animation';
 import { CLUSTERS, EDGES, STACK, clusterIndex } from '@/data/stack';
 import { GLSL3, glsl } from '@/lib/glsl';
 import { constellationHandle } from '@/scenes/handles';
+import { travelPresence } from '@/scenes/travel';
 import { sceneState, useScene } from '@/store/scene';
 import nodeFrag from '@/shaders/constellation.frag';
 import nodeVert from '@/shaders/constellation.vert';
@@ -299,7 +300,9 @@ export function StackConstellation() {
     const dt = Math.min(delta, 1 / 30);
     const s = sceneState();
 
-    const goal = active ? 1 : 0;
+    // Inside a band to or from this place, the camera's progress decides;
+    // otherwise the section does. See scenes/travel.
+    const goal = travelPresence('constellation') ?? (active ? 1 : 0);
     opacity.current += (goal - opacity.current) * (1 - Math.exp(-CONSTELLATION.fadeRate * dt));
     nodeUniforms.uOpacity.value = opacity.current;
     edgeUniforms.uOpacity.value = opacity.current;

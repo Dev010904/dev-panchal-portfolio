@@ -18,6 +18,7 @@ import renderVert from '@/shaders/labGpu.vert';
 import positionFrag from '@/shaders/sim/position.frag';
 import velocityFrag from '@/shaders/sim/velocity.frag';
 import { blastHandle, gpuFieldHandle } from '@/scenes/handles';
+import { travelPresence } from '@/scenes/travel';
 import { sceneState, useScene } from '@/store/scene';
 
 /**
@@ -281,7 +282,9 @@ export function LabFieldGPU({ enabled }: { enabled: boolean }) {
     const dt = Math.min(delta, 1 / 30);
 
     // ── Presence ────────────────────────────────────────────────────────────
-    const goal = active ? 1 : 0;
+    // Inside a band to or from this place, the camera's progress decides;
+    // otherwise the section does. See scenes/travel.
+    const goal = travelPresence('lab') ?? (active ? 1 : 0);
     opacity.current += (goal - opacity.current) * (1 - Math.exp(-G.fadeRate * dt));
     formation.current += (goal - formation.current) * (1 - Math.exp(-G.fadeRate * 0.7 * dt));
 
