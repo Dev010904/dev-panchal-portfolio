@@ -309,12 +309,20 @@ html.lenis body {
   border-color: var(--color-accent);
   color: var(--color-bg);
 }
-/* The burger's top line draws in on hover, so the glyph answers the pointer. */
+/* The burger's top line draws in on hover, so the glyph answers the pointer.
+   Width, right-aligned, rather than a scale: a transform-origin moved off
+   centre also moves the pivot of the X the lines rotate into, which then
+   opens as a chevron. */
+.menu-cta .menu-glyph {
+  align-items: flex-end;
+}
 .menu-cta .menu-glyph > span {
-  transform-origin: right center;
+  transition:
+    transform 0.5s var(--ease-reveal),
+    width 0.35s var(--ease-reveal);
 }
 .menu-cta:hover[aria-expanded='false'] .menu-glyph > span:first-child {
-  transform: scaleX(0.55);
+  width: 0.5rem;
 }
 .menu-cta::after {
   content: '';

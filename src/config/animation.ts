@@ -794,7 +794,7 @@ export const BLAST = {
      * `core` is the white-hot point's 1/e time in seconds; `size` its world
      * diameter. Short on purpose: it is two or three frames, not an event.
      */
-    flash: { duration: 0.3, env: 1.8, ember: 6, core: 0.055, size: 2.2 },
+    flash: { duration: 0.3, env: 1.8, ember: 6, core: 0.045, size: 1.6 },
     /**
      * The fireball, as billows. Speeds in world units/s (the hero frame is
      * ~3 units tall at the mark), sizes as world diameters. `cool` is each
@@ -807,16 +807,16 @@ export const BLAST = {
     fire: {
       count: 18,
       countLow: 8,
-      speed: [0.7, 2.3] as [number, number],
-      drag: 3.4,
+      speed: [0.9, 2.8] as [number, number],
+      drag: 3.2,
       rise: [0.35, 1.6] as [number, number],
       size: [0.2, 0.34] as [number, number],
-      grow: [0.42, 0.78] as [number, number],
+      grow: [0.5, 0.9] as [number, number],
       swell: 0.16,
       cool: [0.18, 0.4] as [number, number],
       life: [1.5, 2.5] as [number, number],
       late: 0.3,
-      emit: 0.55,
+      emit: 0.4,
       soot: 0.62,
     },
     /** The fire's light on the parts. Candela at peak, reach in world units, 1/e seconds. */

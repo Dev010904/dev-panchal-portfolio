@@ -73,7 +73,7 @@ void main() {
   float density = 1.0 - smoothstep(0.32, 0.92, edge);
   if (density < 0.003) discard;
 
-  float t = vHeat * (1.3 - 0.75 * r) * (0.45 + detail * 1.1);
+  float t = vHeat * (1.15 - 0.6 * r) * (0.45 + detail * 1.1);
 
   vec3 emit = blackbody(t) * uEmit;
   // Soot takes over where it has cooled. A little of the dying glow is left

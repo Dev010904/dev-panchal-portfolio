@@ -301,6 +301,40 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gl, camera, scene, sparks, shards, fire, flash, fireLight]);
 
+  /**
+   * ONE REAL DRAW BEFORE ANYONE CAN PRESS.
+   *
+   * Compiling at mount is not the whole job. Measured on the deployed page on
+   * an Iris Xe: with every program already compiled and linked, the first
+   * frame that drew with the fire light on still took 84ms — ANGLE finishes a
+   * D3D program on its first real draw, not at link. Every first draw would
+   * land on the detonation frame.
+   *
+   * So for two frames under the preloader, everything here draws once as
+   * degenerate geometry — zero-size billows, zero-width sparks, zero-scale
+   * chips, a zero-size flash — with the light on at zero intensity, which
+   * also takes the mark's lit variants through a real draw. Nothing reaches a
+   * pixel. Waits for the environment map, because the lit programs are keyed
+   * on it and a warm-up before it exists would warm the wrong ones.
+   */
+  const warmFrames = useRef(0);
+  const zeroMatrix = useMemo(() => new THREE.Matrix4().makeScale(0, 0, 0), []);
+  const warmUp = (on: boolean) => {
+    fireLight.intensity = 0;
+    fireLight.visible = on;
+    fire.geo.instanceCount = on ? 1 : 0;
+    sparks.geo.instanceCount = on ? 1 : 0;
+    flash.mat.uniforms.uSize.value = on ? 0 : F.flash.size;
+    for (const mesh of [hotMesh.current, coldMesh.current]) {
+      mesh.setMatrixAt(0, zeroMatrix);
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.count = on ? 1 : 0;
+    }
+    for (const mesh of [fireMesh.current, sparkMesh.current, flashMesh.current, hotMesh.current, coldMesh.current]) {
+      mesh.visible = on;
+    }
+  };
+
   const st = useRef({
     active: false,
     t0: 0,
@@ -447,6 +481,11 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
       compiledMark.current = group;
     }
 
+    if (warmFrames.current < 3 && scene.environment && !s.active) {
+      warmFrames.current++;
+      warmUp(warmFrames.current < 3);
+    }
+
     if (blastHandle.detonations !== s.lastDetonation) {
       s.lastDetonation = blastHandle.detonations;
       // The mark has to be the subject. A detonation in the Lab is the
@@ -567,7 +606,7 @@ export function BlastFX({ quality }: { quality: 'high' | 'low' }) {
         // Swells fast while it burns, then keeps spreading slowly as smoke.
         const diameter =
           fire.size0[i] + fire.grow[i] * (1 - Math.exp(-age * 5)) + Fi.swell * age;
-        const h = 1.15 * Math.exp(-age / fire.cool[i]);
+        const h = Math.exp(-age / fire.cool[i]);
         const fadeIn = Math.min(1, age / 0.035);
         const fadeOut = 1 - THREE.MathUtils.smoothstep(age, life * 0.5, life);
         P[o * 4] = fire.pos[k];
