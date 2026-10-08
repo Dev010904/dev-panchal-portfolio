@@ -280,8 +280,10 @@ function Driver({
     // at the apex and leaves with the last one, off the same damped position,
     // so the title never sits on screen over an empty arc.
     const pos = workHandle.position;
-    const copyIn = THREE.MathUtils.smoothstep(pos, from - 0.6, from - 0.05);
-    const copyOut = 1 - THREE.MathUtils.smoothstep(pos, to + 0.05, to + 0.6);
+    // `from` is half a card before the first card squares up at the apex: in
+    // between there and just short of it, out over the mirror of that.
+    const copyIn = THREE.MathUtils.smoothstep(pos, from - 0.1, from + 0.32);
+    const copyOut = 1 - THREE.MathUtils.smoothstep(pos, to - 0.32, to + 0.1);
     workHandle.copy = s.reducedMotion ? 1 : copyIn * copyOut;
 
     const focus = THREE.MathUtils.clamp(Math.round(workHandle.position), 0, count - 1);
@@ -554,7 +556,7 @@ function Headline() {
       goal = s.shot === 'work' ? 1 : 0;
     }
     arrive.current += (goal - arrive.current) * (1 - Math.exp(-rate * dt));
-    if (s.reducedMotion) arrive.current = goal;
+    if (Math.abs(goal - arrive.current) < 0.004 || s.reducedMotion) arrive.current = goal;
 
     // The ribbon's entry and exit, off its damped position.
     const from = -A.overscan;

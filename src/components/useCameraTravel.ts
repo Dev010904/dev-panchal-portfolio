@@ -1,6 +1,6 @@
 'use client';
 
-import type { TravelRoute } from '@/config/animation';
+import { TRAVEL, type TravelRoute } from '@/config/animation';
 import { ScrollTrigger, useGsap } from '@/lib/gsap';
 import { travelHandle } from '@/scenes/handles';
 import { useScene } from '@/store/scene';
@@ -46,6 +46,17 @@ export function useCameraTravel(
           travelHandle.active = false;
           travelHandle.p = p >= 1 ? 1 : 0;
         }
+
+        // Hand over at the band's own edges. The section's shot trigger sits on
+        // the same line, but "on the line" is a pixel where neither has fired:
+        // stopping exactly there left the camera easing back to the previous
+        // shot from the end of the band. So the band names the shot it ends on,
+        // and on the way back up, the one it started from.
+        if (inside) return;
+        const s = useScene.getState();
+        const r = TRAVEL[route];
+        if (p >= 1 && s.shot === r.from) s.setShot(r.to);
+        else if (p <= 0 && s.shot === r.to) s.setShot(r.from);
       };
 
       const st = ScrollTrigger.create({

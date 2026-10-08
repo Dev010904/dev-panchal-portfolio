@@ -495,9 +495,14 @@ export const SHAFT = {
   ],
   /** Label height in world units. */
   labelHeight: 0.15,
-  dust: { count: 520, countLow: 240, spread: [16, 13] as [number, number], trail: 0.05, maxLength: 3 },
+  /**
+   * A ring at each section's level, around the room's axis, that the camera
+   * passes through: the floors going by. Centre [x, z] and radius, world units.
+   */
+  ring: { centre: [-0.6, -1.4] as [number, number], radius: 5.2, segments: 128 },
+  dust: { count: 820, countLow: 360, spread: [16, 13] as [number, number], trail: 0.05, maxLength: 3 },
   /** Peak opacity of the line work and of the dust. */
-  opacity: { line: 0.55, guide: 0.22, dust: 0.5 },
+  opacity: { line: 0.6, guide: 0.3, dust: 0.62 },
 } as const;
 
 /**

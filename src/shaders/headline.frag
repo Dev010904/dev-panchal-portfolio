@@ -43,7 +43,9 @@ void main() {
 
   // The scan: a thin ember line at the outline's front while it is moving,
   // brightest where it crosses a stroke.
-  float live = step(0.002, uDraw) * (1.0 - step(0.998, uDraw));
+  // Fades out over the last stretch, so the finished type is not left with a
+  // line standing at its right edge while the front settles.
+  float live = step(0.002, uDraw) * (1.0 - smoothstep(0.86, 0.97, uDraw));
   float scan = exp(-pow((x - drawAt) / 0.006, 2.0)) * live;
 
   // The sheen: one soft band every seven seconds, only over finished fill.

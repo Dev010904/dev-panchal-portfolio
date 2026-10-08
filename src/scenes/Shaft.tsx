@@ -58,6 +58,29 @@ export function Shaft({ quality }: { quality: 'high' | 'low' }) {
     }
 
     const guide: number[] = [];
+    // The floors: a ring at each section's level, with a tick every 30°.
+    const [cx, cz] = S.ring.centre;
+    for (const d of S.datums) {
+      if (d.y < S.bottom - 3 || d.y > S.top + 3) continue;
+      const n = S.ring.segments;
+      for (let i = 0; i < n; i++) {
+        const a0 = (i / n) * Math.PI * 2;
+        const a1 = ((i + 1) / n) * Math.PI * 2;
+        guide.push(
+          cx + Math.cos(a0) * S.ring.radius, d.y, cz + Math.sin(a0) * S.ring.radius,
+          cx + Math.cos(a1) * S.ring.radius, d.y, cz + Math.sin(a1) * S.ring.radius,
+        );
+      }
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2;
+        const r0 = S.ring.radius;
+        const r1 = S.ring.radius * (i % 3 === 0 ? 0.9 : 0.96);
+        guide.push(
+          cx + Math.cos(a) * r0, d.y, cz + Math.sin(a) * r0,
+          cx + Math.cos(a) * r1, d.y, cz + Math.sin(a) * r1,
+        );
+      }
+    }
     for (const [gx, gz] of S.guides) {
       guide.push(gx, S.top, gz, gx, S.bottom, gz);
       for (let y = Math.ceil(S.bottom / S.majorEvery) * S.majorEvery; y <= S.top; y += S.majorEvery) {
