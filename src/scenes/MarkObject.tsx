@@ -400,12 +400,11 @@ export function MarkObject({
     presence.current += (goalPresence - presence.current) * (1 - Math.exp(-2.6 * dt));
 
     // ── Blast ───────────────────────────────────────────────────────────────
-    // Charging squeezes the assembly inward and the release throws it apart.
-    // This rides on top of the scroll-driven explode rather than replacing it,
-    // so detonating mid-Deconstruction does something coherent instead of
-    // fighting the timeline.
+    // The release throws the assembly apart. This rides on top of the
+    // scroll-driven explode rather than replacing it, so detonating
+    // mid-Deconstruction does something coherent instead of fighting the
+    // timeline.
     const blastAmt = frozen ? 0 : blastHandle.amount;
-    const squeeze = frozen ? 0 : blastHandle.squeeze * 0.13;
     const tumble = frozen ? 0 : blastHandle.spin;
 
     // Ambient drift while the blast is HELD. Without it a long press freezes
@@ -494,12 +493,12 @@ export function MarkObject({
       // scroll explode, but further and with a tumble. Reusing the stored
       // axis rather than a random direction is what keeps it looking like a
       // mechanism coming apart instead of confetti.
-      if (blastAmt > 0.001 || squeeze > 0.001) {
+      if (blastAmt > 0.001) {
         // Each part drifts on its own phase, seeded from its index, so a held
         // blast breathes unevenly instead of pulsing as one block.
         const phase = drift * (0.5 + blastSeeds[i]);
         const push = blastAmt * BLAST.markPush * (0.6 + blastSeeds[i] * 0.8) + phase;
-        tmp.addScaledVector(blastDirs[i], push - squeeze);
+        tmp.addScaledVector(blastDirs[i], push);
         mesh.rotation.x = tumble * blastSpin[i] + drift * BLAST.drift.spin * blastSpin[i];
       } else if (mesh.rotation.x !== 0) {
         mesh.rotation.x = 0;

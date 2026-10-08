@@ -39,11 +39,14 @@ import { useScene } from '@/store/scene';
  * that used to be here forced a full-page raster on every frame of the blast,
  * which is most of what made the recovery feel like it was dragging.
  *
- * THE WAVEFRONT
- * Every element used to move on the same frame, which reads as the page
- * being nudged, not as something detonating. Now the shock starts at the
- * MARK — wherever the press landed, it is the logo that explodes — and each
- * element is struck when the front reaches it, nearest first. The strike is a
+ * THE STRIKE
+ * The shock starts at the MARK — wherever the press landed, it is the logo
+ * that explodes — and every element is hit ON THE DETONATION FRAME, pushed
+ * away from it, hardest nearest. It used to be hit when a simulated front
+ * reached it (2600px/s, so the headline moved a third of a second after the
+ * bang) and the push itself eased in from rest, and on the live page that
+ * read as the type lagging the explosion rather than being thrown by it. At
+ * screen scale a real blast front is effectively instant. The strike is a
  * damped spring on top of the held push: out past its rest offset, back, and
  * settled within a second, which is how a real impact reads. A warm flash is
  * thrown across the scene layer underneath the type, never over it.
@@ -80,32 +83,27 @@ export function HoldToBlast() {
      * Durations here are fractions of the playhead, not seconds — the real
      * timing comes from how fast the playhead is driven.
      */
+    /*
+     * LINEAR, ON PURPOSE. The playhead is already damped toward its target
+     * (1 - e^(-kt), below), and that IS the shape of an impulse: full speed on
+     * the detonation frame, decelerating as drag takes it. The power2.inOut
+     * that used to sit here started every part — and every line of type — at
+     * zero velocity and accelerated it, which is an exploded-view animation,
+     * not an explosion. Translation and tumble are both imparted by the same
+     * blast, so they share the curve.
+     *
+     * There is no brace either. The pull-in before the release used to land
+     * in the first frames after detonation, fighting the push; the two-second
+     * shaking hold is already the anticipation.
+     */
     const tl = gsap
       .timeline({ paused: true })
-      // Brace first: the assembly pulls in on itself before it lets go. This
-      // peaks at a fifth of the way in and is gone by halfway, so it reads as
-      // an anticipation rather than as a second, competing motion.
-      .fromTo(
-        blastHandle,
-        { squeeze: 0 },
-        { squeeze: 1, duration: 0.2, ease: 'power2.out' },
-        0,
-      )
-      .to(blastHandle, { squeeze: 0, duration: 0.34, ease: 'power2.inOut' }, 0.2)
-      .fromTo(
-        blastHandle,
-        { amount: 0 },
-        { amount: 1, duration: 1, ease: 'power2.inOut' },
-        0,
-      )
-      // The tumble lags the translation slightly, so parts travel first and
-      // rotate as they go rather than pirouetting on the spot.
-      .fromTo(blastHandle, { spin: 0 }, { spin: 1, duration: 1, ease: 'power1.in' }, 0);
+      .fromTo(blastHandle, { amount: 0 }, { amount: 1, duration: 1, ease: 'none' }, 0)
+      .fromTo(blastHandle, { spin: 0 }, { spin: 1, duration: 1, ease: 'none' }, 0);
 
     /**
      * Damping rates. k = 3/t puts the playhead at ~95% of its target after t
-     * seconds, which with the power2.inOut on the timeline lands the visible
-     * motion right on chargeMs and recoverMs.
+     * seconds, so the visible motion lands on chargeMs and recoverMs.
      */
     const kCharge = 3 / (BLAST.chargeMs / 1000);
     const kRelease = 3 / (BLAST.recoverMs / 1000);
@@ -131,7 +129,7 @@ export function HoldToBlast() {
       dx: number;
       dy: number;
       falloff: number;
-      /** `performance.now()` seconds when the front reaches it; Infinity before a detonation. */
+      /** `performance.now()` seconds of the detonation that struck it; Infinity before one. */
       hit: number;
       /** ±1, so neighbours do not all twist the same way. */
       spin: number;
@@ -179,7 +177,7 @@ export function HoldToBlast() {
           // Near the blast things move most. Uniform displacement reads as the
           // page scrolling rather than as something detonating.
           falloff: 1 - Math.min(len / max, 1) * 0.55,
-          hit: when === Infinity && prior ? prior.hit : when + len / D.waveSpeed,
+          hit: when === Infinity && prior ? prior.hit : when,
           spin: prior ? prior.spin : Math.random() < 0.5 ? -1 : 1,
           chrome: el.dataset.blast === 'chrome',
         });
@@ -346,13 +344,13 @@ export function HoldToBlast() {
       const shake = blastHandle.shake * BLAST.shake.dom;
 
       for (const t of targets) {
-        // Nothing moves before the front arrives; after it, the held push
-        // comes in fast and the strike rings out on top of it.
+        // Nothing moves before the detonation; from its frame on, the held
+        // push is already travelling at full speed and the strike rings out
+        // on top of it.
         const tau = now - t.hit;
-        const struck = tau > 0 ? 1 - Math.exp(-tau * 14) : 0;
-        const strike = tau > 0 ? Math.exp(-D.damping * omega * tau) * Math.sin(omegaD * tau) : 0;
+        const strike = tau >= 0 ? Math.exp(-D.damping * omega * tau) * Math.sin(omegaD * tau) : 0;
 
-        const amt = a * t.falloff * struck;
+        const amt = tau >= 0 ? a * t.falloff : 0;
         const push = amt * BLAST.domPush * (1 + wob) + strike * D.kick * t.falloff;
         const jx = shake > 0 ? (Math.random() - 0.5) * 2 * shake * t.falloff : 0;
         const jy = shake > 0 ? (Math.random() - 0.5) * 2 * shake * t.falloff : 0;
@@ -380,7 +378,6 @@ export function HoldToBlast() {
       window.removeEventListener('pointercancel', onUp);
       window.removeEventListener('blur', onUp);
       blastHandle.amount = 0;
-      blastHandle.squeeze = 0;
       blastHandle.spin = 0;
       blastHandle.held = false;
       blastHandle.heldFor = 0;

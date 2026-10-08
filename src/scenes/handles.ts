@@ -52,9 +52,7 @@ export const blastHandle = {
    * object sliding around rather than as a structure straining.
    */
   shake: 0,
-  /** 0..1 brace — peaks early in the charge, then releases. */
-  squeeze: 0,
-  /** 0..1 tumble, eased separately so the spin lags the translation. */
+  /** 0..1 tumble, imparted by the same blast as `amount`. */
   spin: 0,
   /** True between pointerdown and pointerup. */
   held: false,
@@ -87,6 +85,24 @@ export const blastHandle = {
   kickAt: -1,
   /** 0..1 flash, decaying. Read by the mark for the ember burn. */
   flash: 0,
+};
+
+/**
+ * THE BLAST'S REFRACTION, for the grade pass (scenes/blastLens.ts).
+ *
+ * Written by BlastFX every frame a detonation is live, read by the lens effect
+ * in the composer's update. Both strengths are zero at rest, and zero is what
+ * keeps the lens on its original, unchanged code path.
+ */
+export const blastLensHandle = {
+  /** xy: centre in uv (y up), z: radius in screen heights, w: strength in screen heights. */
+  shock: [0.5, 0.5, 0, 0] as [number, number, number, number],
+  /** Thickness of the front, screen heights. */
+  shockWidth: 0.03,
+  /** xy: centre in uv, z: radius in screen heights, w: strength in screen heights. */
+  haze: [0.5, 0.5, 0.2, 0] as [number, number, number, number],
+  /** Seconds, for the shimmer's motion. */
+  hazeTime: 0,
 };
 
 /**
@@ -283,10 +299,11 @@ export function resetHandles() {
   blastHandle.amount = 0;
   blastHandle.hold = 0;
   blastHandle.shake = 0;
-  blastHandle.squeeze = 0;
   blastHandle.spin = 0;
   blastHandle.held = false;
   blastHandle.heldFor = 0;
+  blastLensHandle.shock[3] = 0;
+  blastLensHandle.haze[3] = 0;
   glassHandle.amount = 0;
   glassHandle.hover = 0;
   glassHandle.over = false;
