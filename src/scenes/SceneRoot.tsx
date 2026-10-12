@@ -273,6 +273,8 @@ export function SceneRoot() {
         >
           <ProgressBridge />
           <FrameProbe />
+          {/* Stops rendering while the light sheet covers the whole frame. */}
+          <CoverPause />
           {/* Owns gl.info: autoReset off, exactly one reset per real frame. Must
             stay outside the Suspense boundary — a suspension in there would
             take the per-frame reset down with it and the counters would start
@@ -462,6 +464,25 @@ function ProgressBridge() {
  * on integrated graphics, and revealing on it means the visitor's first
  * impression of the site is a stutter.
  */
+/**
+ * NOT DRAWING WHAT NOBODY CAN SEE.
+ *
+ * While the home page's light sheet covers the whole frame (sections/
+ * Capabilities sets store.covered), the 3D room behind it is invisible, so
+ * the render loop is switched off rather than drawing it at full cost for
+ * nothing. The sheet's own scrolling and plotting then has the whole GPU and
+ * main thread to itself, and a laptop stops heating up over a page of type.
+ * The moment any of the room can show again, the loop is back.
+ */
+function CoverPause() {
+  const setFrameloop = useThree((s) => s.setFrameloop);
+  const covered = useScene((s) => s.covered);
+  useEffect(() => {
+    setFrameloop(covered ? 'never' : 'always');
+  }, [covered, setFrameloop]);
+  return null;
+}
+
 function FrameProbe() {
   const frames = useRef(0);
   useFrame(() => {

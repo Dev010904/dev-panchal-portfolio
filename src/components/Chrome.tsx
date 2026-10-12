@@ -522,6 +522,7 @@ function ScrollProgress() {
     // section puts content in.
     <div
       data-blast="chrome"
+      data-ink-adapt
       className={`fixed right-[calc(var(--gutter)*0.5)] top-1/2 z-[100] hidden -translate-y-1/2 flex-col items-center gap-4 transition-opacity duration-500 lg:flex ${
         entered && !menuOpen ? 'opacity-100' : 'opacity-0'
       }`}
@@ -547,7 +548,9 @@ const SECTION_SHOT: Record<string, keyof typeof SHOTS> = {
   index: 'hero',
   mark: 'hero',
   work: 'work',
+  capabilities: 'credits',
   lab: 'lab',
+  constellation: 'constellation',
   about: 'about',
   contact: 'contact',
 };
@@ -577,7 +580,8 @@ export function scrollToSection(id: string, withWipe = false) {
   const s = useScene.getState();
   const from = SHOTS[s.shot]?.target[1] ?? 0;
   const to = SHOTS[SECTION_SHOT[id] ?? 'hero'].target[1];
-  void runSheet(sheetForSection(nav?.display ?? id, to), `SECTION · ${nav?.label ?? id.toUpperCase()}`, from, async () => {
+  const title = nav?.display ?? id.charAt(0).toUpperCase() + id.slice(1);
+  void runSheet(sheetForSection(title, to), 'SECTION', from, async () => {
     if (lenis) lenis.scrollTo(el, { immediate: true, force: true });
     else el.scrollIntoView();
     // The camera's flight to the section's pose, which the plate covers.

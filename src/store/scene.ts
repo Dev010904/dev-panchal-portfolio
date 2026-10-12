@@ -26,6 +26,11 @@ interface SceneStore {
    * rather than behind them, where nobody would see it.
    */
   veiled: boolean;
+  /**
+   * The light sheet (sections/Capabilities) covers the whole frame. Nothing of
+   * the scene can be seen, so it stops rendering until it can (CoverPause).
+   */
+  covered: boolean;
 
   /** Normalised pointer, -1..1, origin centre. */
   pointer: [number, number];
@@ -79,6 +84,7 @@ interface SceneStore {
   setMarkState: (s: MarkState) => void;
   toggleMenu: (v?: boolean) => void;
   setVeiled: (v: boolean) => void;
+  setCovered: (v: boolean) => void;
   setPointer: (x: number, y: number, u: number, v: number) => void;
   setHovering: (v: boolean) => void;
   setSection: (s: string) => void;
@@ -103,6 +109,7 @@ export const useScene = create<SceneStore>((set) => ({
   markState: 'assembled',
   menuOpen: false,
   veiled: false,
+  covered: false,
 
   pointer: [0, 0],
   pointerUv: [0.5, 0.5],
@@ -129,6 +136,7 @@ export const useScene = create<SceneStore>((set) => ({
   setMarkState: (markState) => set({ markState }),
   toggleMenu: (v) => set((s) => ({ menuOpen: v ?? !s.menuOpen })),
   setVeiled: (veiled) => set({ veiled }),
+  setCovered: (covered) => set({ covered }),
   setPointer: (x, y, u, v) => set({ pointer: [x, y], pointerUv: [u, v] }),
   setHovering: (hovering) => set({ hovering }),
   setSection: (activeSection) => set({ activeSection }),

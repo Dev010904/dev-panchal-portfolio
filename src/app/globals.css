@@ -597,3 +597,187 @@ button {
   transform-origin: left center;
   transform: scaleX(0);
 }
+
+/* ── The sheet: the home page's one light chapter ──────────────────────────
+   Paper, a drafting grid, registration marks and a title block. Everything
+   inside re-inks through the colour tokens, so the shared primitives (rails,
+   labels, rules, links) turn dark on paper without a second set of classes.
+   See sections/Capabilities. */
+.sheet-paper {
+  --paper: #efeee9;
+  --color-fg: #0b0b0d;
+  --color-fg-dim: rgba(11, 11, 13, 0.58);
+  --color-rule: rgba(11, 11, 13, 0.14);
+  background: var(--paper);
+  color: var(--color-fg);
+}
+.sheet-grid {
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(11, 11, 13, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(11, 11, 13, 0.055) 1px, transparent 1px),
+    linear-gradient(rgba(11, 11, 13, 0.026) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(11, 11, 13, 0.026) 1px, transparent 1px);
+  background-size:
+    96px 96px,
+    96px 96px,
+    16px 16px,
+    16px 16px;
+  background-position: center top;
+}
+/* The intro before exposure: the same layout as an outline over the room. */
+.sheet-ghost {
+  --color-fg: rgba(242, 242, 240, 0.82);
+  --color-fg-dim: rgba(242, 242, 240, 0.42);
+  --color-rule: rgba(242, 242, 240, 0.14);
+  color: rgba(242, 242, 240, 0.7);
+}
+.sheet-ghost h2 {
+  color: transparent;
+  -webkit-text-stroke: 1px rgba(242, 242, 240, 0.6);
+}
+/* The exposure line: ember, with its readout riding at the right. */
+.sheet-scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  z-index: 3;
+  pointer-events: none;
+  background: var(--color-accent);
+  box-shadow:
+    0 0 2px rgba(255, 214, 190, 0.9),
+    0 0 22px 3px rgba(255, 90, 31, 0.55);
+}
+.sheet-scan > span {
+  position: absolute;
+  right: var(--gutter);
+  top: 10px;
+  color: var(--color-accent);
+}
+.sheet-reg {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border: 1px solid rgba(11, 11, 13, 0.32);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.sheet-reg::before,
+.sheet-reg::after {
+  content: '';
+  position: absolute;
+  background: rgba(11, 11, 13, 0.45);
+}
+.sheet-reg::before {
+  left: -7px;
+  right: -7px;
+  top: 50%;
+  height: 1px;
+}
+.sheet-reg::after {
+  top: -7px;
+  bottom: -7px;
+  left: 50%;
+  width: 1px;
+}
+.sheet-reg[data-c='tl'] {
+  left: calc(var(--gutter) * 0.45);
+  top: calc(var(--nav-h) + 4px);
+}
+.sheet-reg[data-c='tr'] {
+  right: calc(var(--gutter) * 0.45);
+  top: calc(var(--nav-h) + 4px);
+}
+.sheet-reg[data-c='bl'] {
+  left: calc(var(--gutter) * 0.45);
+  bottom: 18px;
+}
+.sheet-reg[data-c='br'] {
+  right: calc(var(--gutter) * 0.45);
+  bottom: 18px;
+}
+.sheet-titleblock {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border: 1px solid var(--color-rule);
+  min-width: min(100%, 34rem);
+}
+.sheet-titleblock > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.85rem 1rem;
+  border-right: 1px solid var(--color-rule);
+  border-bottom: 1px solid var(--color-rule);
+}
+.sheet-titleblock > div:nth-child(2n) {
+  border-right: 0;
+}
+.sheet-titleblock > div:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+@media (min-width: 768px) {
+  .sheet-titleblock {
+    grid-template-columns: repeat(4, minmax(0, auto));
+  }
+  .sheet-titleblock > div {
+    border-bottom: 0;
+  }
+  .sheet-titleblock > div:nth-child(2n) {
+    border-right: 1px solid var(--color-rule);
+  }
+  .sheet-titleblock > div:last-child {
+    border-right: 0;
+  }
+}
+
+/* The capability drawings: the pen plots each stroke via its dash offset. */
+.figure .plot {
+  stroke: var(--color-fg);
+  stroke-width: 1.15;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+}
+.figure .plot.construct {
+  stroke: rgba(11, 11, 13, 0.2);
+  stroke-width: 1;
+}
+.figure .plot.callout {
+  stroke: var(--color-accent);
+}
+.figure .plot-heavy {
+  stroke-width: 2;
+}
+.figure .fig-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  fill: rgba(11, 11, 13, 0.62);
+}
+.figure .fig-callout {
+  fill: var(--color-accent);
+}
+
+/* ── On paper, the fixed chrome re-inks ─────────────────────────────────────
+   The top bar inverts by itself (mix-blend-difference); the MENU button and
+   the side readouts are not in that layer, so they take the paper's ink here.
+   `on-light` is set on <html> by the sheet while the bar is over paper. */
+html.on-light .menu-cta:not([aria-expanded='true']) {
+  background: #0b0b0d;
+  border-color: #0b0b0d;
+  color: #f2f2f0;
+}
+html.on-light .menu-cta:not([aria-expanded='true']):hover {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-bg);
+}
+html.on-light [data-ink-adapt] {
+  --color-fg: #0b0b0d;
+  --color-fg-dim: rgba(11, 11, 13, 0.58);
+  --color-rule: rgba(11, 11, 13, 0.16);
+}

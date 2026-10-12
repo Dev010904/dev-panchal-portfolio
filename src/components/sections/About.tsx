@@ -30,7 +30,7 @@ export function About() {
   useSectionShot(root, 'about', 'ABOUT');
   // Back down from the stack to the mark as this section rises into view;
   // see TRAVEL.
-  useCameraTravel(root, 'toAbout', 'top 55%');
+  useCameraTravel(root, 'toAbout', 'top 55%', 'top 85%');
 
   useGsap(
     () => {

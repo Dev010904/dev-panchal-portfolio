@@ -28,7 +28,7 @@ export function Lab() {
 
   useSectionShot(root, 'lab', 'LAB');
   // Up from the achievement as this section rises into view; see TRAVEL.
-  useCameraTravel(root, 'toLab', 'top 55%');
+  useCameraTravel(root, 'toLab', 'top 55%', 'top 85%');
 
   const reducedMotion = useScene((s) => s.reducedMotion);
   const active = useScene((s) => s.activeSection === 'LAB');

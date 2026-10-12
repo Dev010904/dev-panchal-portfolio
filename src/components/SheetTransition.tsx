@@ -136,7 +136,7 @@ export function playWhenUncovered(tl: gsap.core.Timeline): () => void {
 
 /** A section jump on the home page, behind the sheet. */
 export function sheetForSection(title: string, y: number): Sheet {
-  return { title, spec: 'SECTION', y };
+  return { title, spec: `DP-01 · ${title.toUpperCase()}`, y };
 }
 
 const wait = (s: number) => new Promise<void>((r) => setTimeout(r, s * 1000));
@@ -276,7 +276,7 @@ export function SheetTransition() {
       const to = sheetFor(url.pathname);
       const from = sheetFor(window.location.pathname);
       const href = url.pathname + url.search + url.hash;
-      void runSheet(to, `${sheetNumber(url.pathname)} · ${to.spec}`, from.y, async () => {
+      void runSheet(to, sheetNumber(url.pathname), from.y, async () => {
         const arrived = new Promise<void>((resolve) => {
           if (pathRef.current === url.pathname) resolve();
           else arrivals.current.push({ path: url.pathname, resolve });

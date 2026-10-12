@@ -1,7 +1,7 @@
 'use client';
 
 import { About } from '@/components/sections/About';
-import { Achievements } from '@/components/sections/Achievements';
+import { Capabilities } from '@/components/sections/Capabilities';
 import { Constellation } from '@/components/sections/Constellation';
 import { Contact } from '@/components/sections/Contact';
 import { Deconstruction } from '@/components/sections/Deconstruction';
@@ -25,10 +25,11 @@ export default function Page() {
       <Deconstruction />
       <Marquee />
       <Work />
-      {/* Between the work and the Lab on purpose: it is the one claim on the
-          page that is externally verifiable, and it lands best straight after
-          the evidence rather than filed near the CV-shaped material. */}
-      <Achievements />
+      {/* The one light chapter: what I build, and the facts behind it, as a
+          drawing sheet. Straight after the work on purpose — the evidence
+          first, then what it is evidence of — and it carries the rank, the one
+          claim on the page that is externally verifiable. */}
+      <Capabilities />
       <Lab />
       {/* Between the Lab and About on purpose, and it is the same hand-off the
           old visitor-trace section was placed here to make — just pointed

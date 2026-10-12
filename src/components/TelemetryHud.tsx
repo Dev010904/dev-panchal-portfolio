@@ -76,6 +76,7 @@ export function TelemetryHud() {
       ref={root}
       aria-hidden="true"
       data-blast="chrome"
+      data-ink-adapt
       className="pointer-events-none fixed bottom-4 left-4 z-20 hidden select-none flex-col gap-[3px] opacity-25 md:flex"
       style={{
         fontFamily: 'var(--font-mono)',

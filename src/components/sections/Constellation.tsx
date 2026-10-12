@@ -41,7 +41,7 @@ export function Constellation() {
   useSectionShot(root, 'constellation', 'CONSTELLATION');
   // Up the shaft from the Lab, past the mark, as this section rises into
   // view; see TRAVEL.
-  useCameraTravel(root, 'toConstellation', 'top 55%');
+  useCameraTravel(root, 'toConstellation', 'top 55%', 'top 85%');
 
   const focus = useScene((s) => s.constellationFocus);
   const isMobile = useScene((s) => s.isMobile);
