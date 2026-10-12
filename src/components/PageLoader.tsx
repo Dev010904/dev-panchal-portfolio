@@ -5,6 +5,7 @@ import { useRef, useState } from 'react';
 import { PAGE_LOADER } from '@/config/animation';
 import { gsap, useGsap } from '@/lib/gsap';
 import { getLenis } from '@/components/SmoothScroll';
+import { sheetBusy } from '@/components/SheetTransition';
 import { useScene } from '@/store/scene';
 
 /**
@@ -44,6 +45,14 @@ export function PageLoader({ label, spec }: { label: string; spec: string }) {
         setShown(false);
         getLenis()?.start();
       };
+
+      // Arrived by a sheet change: the blades are the transition, and a second
+      // plate on top of them would be a stutter. This one is for arrivals the
+      // sheet did not stage — the browser's back and forward buttons.
+      if (sheetBusy()) {
+        finish();
+        return;
+      }
 
       // The page underneath must not be scrollable while the plate is over it,
       // or a flick during the transition lands somewhere arbitrary.

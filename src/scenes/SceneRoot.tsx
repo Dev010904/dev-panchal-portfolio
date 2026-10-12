@@ -33,7 +33,6 @@ import { StackConstellation } from './StackConstellation';
 import { SweepLines } from './SweepLines';
 import { Telemetry } from './Telemetry';
 import { Volumetrics } from './Volumetrics';
-import { WipeOverlay } from './WipeOverlay';
 import { WorkScene } from './WorkScene';
 import { markHandles } from './handles';
 import { lensHandle } from './lens';
@@ -311,7 +310,6 @@ export function SceneRoot() {
             <PageStructures quality={quality} />
             <FooterFloor />
 
-            <WipeOverlay />
 
             <Effects mobile={mobile || reduced} />
           </Suspense>

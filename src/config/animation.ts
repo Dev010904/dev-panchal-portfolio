@@ -1249,15 +1249,22 @@ export const LAB = {
   text: 'DEV PANCHAL',
 } as const;
 
-export const TRANSITION = {
-  /** Section wipe — hand-written shader, not a fade. */
-  duration: 1.05,
-  ease: EASE.move,
-  /** Noise distortion of the wipe edge. */
-  edgeNoise: 0.19,
-  edgeWidth: 0.16,
-  /** RGB split at the wave front. */
-  aberration: 0.02,
+/**
+ * THE SHEET CHANGE — every route change and menu jump (components/SheetTransition).
+ *
+ * Seconds. `close` and `open` are each blade's travel; `stagger` is the gap
+ * between neighbouring blades, from the centre on the way in and from the
+ * edges on the way out. `minHold` is the shortest the plate may stand, so a
+ * fast route never flickers it; `cameraHold` is how long after the route has
+ * changed the plate waits for the camera's flight to the new structure.
+ */
+export const SHEET = {
+  blades: 7,
+  close: 0.72,
+  open: 0.8,
+  stagger: 0.045,
+  minHold: 0.38,
+  cameraHold: 0.55,
 } as const;
 
 /**

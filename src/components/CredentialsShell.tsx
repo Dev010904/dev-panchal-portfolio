@@ -8,6 +8,7 @@ import { PAGES } from '@/data/pages';
 import { gsap, ScrollTrigger, useGsap } from '@/lib/gsap';
 import { PageFooter } from '@/components/PageFooter';
 import { PageLoader } from '@/components/PageLoader';
+import { playWhenUncovered } from '@/components/SheetTransition';
 import { ArrowLink } from '@/components/ui/ArrowLink';
 import { CornerMarks, SectionTag, useCursorTarget, useFooterFloor, useRailFade } from '@/components/ui/primitives';
 import { archiveHandle } from '@/scenes/handles';
@@ -109,7 +110,7 @@ export function CredentialsShell() {
         return;
       }
 
-      gsap
+      const intro = gsap
         .timeline({ delay: 0.1 })
         .fromTo(
           '[data-page-line] > span',
@@ -139,6 +140,9 @@ export function CredentialsShell() {
           scrollTrigger: { trigger: '[data-ledger]', start: 'top 82%' },
         },
       );
+
+      // Arriving behind the sheet, the headline waits for the blades to open.
+      return playWhenUncovered(intro);
     },
     [entered, reducedMotion],
     root,

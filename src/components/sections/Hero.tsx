@@ -5,6 +5,7 @@ import { useRef } from 'react';
 import { HERO } from '@/config/animation';
 import { site } from '@/data/site';
 import { gsap, useGsap } from '@/lib/gsap';
+import { playWhenUncovered } from '@/components/SheetTransition';
 import { useSectionShot } from '@/components/useSectionShot';
 import { ArrowLink } from '@/components/ui/ArrowLink';
 import { CornerMarks } from '@/components/ui/primitives';
@@ -58,6 +59,9 @@ export function Hero() {
           { scaleX: 1, duration: 1.1, ease: 'expo.out', transformOrigin: 'left center' },
           '-=0.85',
         );
+
+      // Back home from an interior page, behind the sheet: rise as it opens.
+      return playWhenUncovered(tl);
     },
     [entered],
     root,

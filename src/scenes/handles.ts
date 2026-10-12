@@ -298,8 +298,6 @@ export const constellationHandle = {
   focus: -1,
 };
 
-/** Section wipe progress, 0..1. Driven by GSAP on navigation. */
-export const wipeHandle = { value: 0, active: false };
 
 /**
  * Screen-space positions of each part, projected from inside the render loop
@@ -323,8 +321,6 @@ export function resetHandles() {
   travelHandle.p = 0;
   archiveHandle.scroll = 0;
   archiveHandle.hover = -1;
-  wipeHandle.value = 0;
-  wipeHandle.active = false;
   blastHandle.amount = 0;
   blastHandle.hold = 0;
   blastHandle.shake = 0;

@@ -4,16 +4,16 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 
-import { MENU, TRANSITION } from '@/config/animation';
+import { MENU, SHOTS } from '@/config/animation';
 import { PAGES } from '@/data/pages';
 import { EMAIL_PARTS, NAV_SECTIONS, SOCIALS, resume, site } from '@/data/site';
 import { gsap, useGsap } from '@/lib/gsap';
 import { getLenis } from '@/components/SmoothScroll';
 import { useTicker } from '@/lib/useTicker';
 import { Cursor } from '@/components/Cursor';
+import { runSheet, sheetForSection, SheetTransition } from '@/components/SheetTransition';
 import { MarkGlyph } from '@/components/ui/MarkGlyph';
 import { useCursorTarget } from '@/components/ui/primitives';
-import { wipeHandle } from '@/scenes/handles';
 import { useScene } from '@/store/scene';
 
 /** Global chrome: nav, menu overlay, scroll progress, cursor. */
@@ -23,6 +23,7 @@ export function Chrome() {
       <Nav />
       <MenuOverlay />
       <ScrollProgress />
+      <SheetTransition />
       <Cursor />
     </>
   );
@@ -541,10 +542,21 @@ function ScrollProgress() {
 
 /* ── Navigation ───────────────────────────────────────────────────────────── */
 
+/** Where each home section lives in the room, for the sheet's depth readout. */
+const SECTION_SHOT: Record<string, keyof typeof SHOTS> = {
+  index: 'hero',
+  mark: 'hero',
+  work: 'work',
+  lab: 'lab',
+  about: 'about',
+  contact: 'contact',
+};
+
 /**
- * Scrolls to a section, optionally behind the shader wipe. The wipe covers the
- * viewport at its midpoint, which is where the scroll jump happens — so a long
- * jump never shows the intervening sections streaking past.
+ * Scrolls to a section, optionally behind the sheet change (see
+ * components/SheetTransition): the blades close, the page jumps while they
+ * are shut, so a long jump never shows the sections in between streaking
+ * past, and they open on the section with the camera already there.
  */
 export function scrollToSection(id: string, withWipe = false) {
   const el = document.getElementById(id);
@@ -561,29 +573,14 @@ export function scrollToSection(id: string, withWipe = false) {
     return;
   }
 
-  wipeHandle.active = true;
-  let jumped = false;
-
-  gsap.fromTo(
-    wipeHandle,
-    { value: 0 },
-    {
-      value: 1,
-      duration: TRANSITION.duration,
-      ease: TRANSITION.ease,
-      onUpdate: () => {
-        // Fire the jump exactly when the panel is fully closed, so a long
-        // scroll never shows the intervening sections streaking past.
-        if (wipeHandle.value >= 0.5 && !jumped) {
-          jumped = true;
-          if (lenis) lenis.scrollTo(el, { immediate: true });
-          else el.scrollIntoView();
-        }
-      },
-      onComplete: () => {
-        wipeHandle.active = false;
-        wipeHandle.value = 0;
-      },
-    },
-  );
+  const nav = NAV_SECTIONS.find((n) => n.id === id);
+  const s = useScene.getState();
+  const from = SHOTS[s.shot]?.target[1] ?? 0;
+  const to = SHOTS[SECTION_SHOT[id] ?? 'hero'].target[1];
+  void runSheet(sheetForSection(nav?.display ?? id, to), `SECTION · ${nav?.label ?? id.toUpperCase()}`, from, async () => {
+    if (lenis) lenis.scrollTo(el, { immediate: true, force: true });
+    else el.scrollIntoView();
+    // The camera's flight to the section's pose, which the plate covers.
+    await new Promise((r) => setTimeout(r, 650));
+  });
 }

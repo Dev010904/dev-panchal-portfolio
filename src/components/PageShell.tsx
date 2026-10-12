@@ -7,6 +7,7 @@ import type { PageDef } from '@/data/pages';
 import { PAGES } from '@/data/pages';
 import { gsap, useGsap } from '@/lib/gsap';
 import { PageLoader } from '@/components/PageLoader';
+import { playWhenUncovered } from '@/components/SheetTransition';
 import { PageFooter } from '@/components/PageFooter';
 import { ArrowLink } from '@/components/ui/ArrowLink';
 import { CornerMarks, SectionTag, useFooterFloor, useRailFade } from '@/components/ui/primitives';
@@ -43,7 +44,7 @@ export function PageShell({ page }: { page: PageDef }) {
     () => {
       if (!entered) return;
 
-      gsap
+      const intro = gsap
         .timeline({ delay: 0.1 })
         .fromTo(
           '[data-page-line] > span',
@@ -69,6 +70,9 @@ export function PageShell({ page }: { page: PageDef }) {
           scrollTrigger: { trigger: '[data-entries]', start: 'top 78%' },
         },
       );
+
+      // Arriving behind the sheet, the headline waits for the blades to open.
+      return playWhenUncovered(intro);
     },
     [entered, page.slug],
     root,

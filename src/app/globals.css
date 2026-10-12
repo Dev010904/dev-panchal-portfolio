@@ -483,3 +483,117 @@ button {
     transform: none !important;
   }
 }
+
+/* ── The sheet change ───────────────────────────────────────────────────────
+   Precision blades that drop across the frame between places. See
+   components/SheetTransition. Transform-only; every blade is its own layer. */
+.sheet-blade {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: linear-gradient(180deg, #0c0c0f 0%, #08080a 55%, #0b0b0e 100%);
+  border-left: var(--rule-w) solid rgba(242, 242, 240, 0.07);
+  will-change: transform;
+  overflow: hidden;
+}
+/* The measuring scale on each blade's edge: a tick every 12px, a long one
+   every 60px. */
+.sheet-scale {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 12px;
+  height: 100%;
+  opacity: 0.7;
+  background:
+    repeating-linear-gradient(to bottom, rgba(242, 242, 240, 0.32) 0 1px, transparent 1px 60px) left top / 12px 100%
+      no-repeat,
+    repeating-linear-gradient(to bottom, rgba(242, 242, 240, 0.16) 0 1px, transparent 1px 12px) left top / 6px 100%
+      no-repeat;
+}
+/* The leading edge of a moving blade: one ember hairline. */
+.sheet-edge {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--color-accent);
+  box-shadow: 0 0 12px rgba(255, 90, 31, 0.55);
+}
+.sheet-blade[data-dir='down'] .sheet-edge {
+  bottom: 0;
+}
+.sheet-blade[data-dir='up'] .sheet-edge {
+  top: 0;
+}
+.sheet-plate {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(86vw, 34rem);
+  transform: translate(-50%, -50%);
+  padding: clamp(1.25rem, 2.4vw, 2rem) clamp(1.25rem, 2.6vw, 2.25rem);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(0.9rem, 1.6vh, 1.25rem);
+  margin-top: 0;
+}
+.sheet-title {
+  font-size: clamp(2.6rem, 6vw, 5.25rem);
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 0.95;
+  color: var(--color-fg);
+  min-height: 0.95em;
+}
+.sheet-corner {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+}
+.sheet-corner::before,
+.sheet-corner::after {
+  content: '';
+  position: absolute;
+  background: rgba(242, 242, 240, 0.55);
+}
+.sheet-corner::before {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+}
+.sheet-corner::after {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+}
+.sheet-corner[data-c='tl'] {
+  left: -7px;
+  top: -7px;
+}
+.sheet-corner[data-c='tr'] {
+  right: -7px;
+  top: -7px;
+}
+.sheet-corner[data-c='bl'] {
+  left: -7px;
+  bottom: -7px;
+}
+.sheet-corner[data-c='br'] {
+  right: -7px;
+  bottom: -7px;
+}
+.sheet-bar {
+  display: block;
+  height: 1px;
+  background: rgba(242, 242, 240, 0.12);
+}
+.sheet-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--color-accent);
+  transform-origin: left center;
+  transform: scaleX(0);
+}

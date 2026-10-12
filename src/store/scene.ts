@@ -20,6 +20,12 @@ interface SceneStore {
 
   markState: MarkState;
   menuOpen: boolean;
+  /**
+   * True while the sheet transition (components/SheetTransition) covers the
+   * page. Entrances gate on it, so a page's headline rises as the blades open
+   * rather than behind them, where nobody would see it.
+   */
+  veiled: boolean;
 
   /** Normalised pointer, -1..1, origin centre. */
   pointer: [number, number];
@@ -72,6 +78,7 @@ interface SceneStore {
   setScrub: (v: number) => void;
   setMarkState: (s: MarkState) => void;
   toggleMenu: (v?: boolean) => void;
+  setVeiled: (v: boolean) => void;
   setPointer: (x: number, y: number, u: number, v: number) => void;
   setHovering: (v: boolean) => void;
   setSection: (s: string) => void;
@@ -95,6 +102,7 @@ export const useScene = create<SceneStore>((set) => ({
 
   markState: 'assembled',
   menuOpen: false,
+  veiled: false,
 
   pointer: [0, 0],
   pointerUv: [0.5, 0.5],
@@ -120,6 +128,7 @@ export const useScene = create<SceneStore>((set) => ({
   setScrub: (scrub) => set({ scrub }),
   setMarkState: (markState) => set({ markState }),
   toggleMenu: (v) => set((s) => ({ menuOpen: v ?? !s.menuOpen })),
+  setVeiled: (veiled) => set({ veiled }),
   setPointer: (x, y, u, v) => set({ pointer: [x, y], pointerUv: [u, v] }),
   setHovering: (hovering) => set({ hovering }),
   setSection: (activeSection) => set({ activeSection }),
