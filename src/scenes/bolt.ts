@@ -72,10 +72,9 @@ export function createBoltMaterial(layer: typeof S.core | typeof S.halo) {
     glslVersion: GLSL3,
     transparent: true,
     blending: THREE.AdditiveBlending,
-    // Tested against the mark at the depth its line now lives at (the back of
-    // the frustum — see SweepLines and the end of bolt.vert): a bolt fired
-    // from a stretch of line hidden behind the mark is hidden with it, rather
-    // than crackling across the front of a solid object.
+    // Set per strike by the line it fires from (SweepLines): tested against
+    // the mark at the back of the frustum for a back line — hidden with the
+    // stretch of line it came from — and drawn on top for a front line.
     depthTest: true,
     depthWrite: false,
     side: THREE.DoubleSide,

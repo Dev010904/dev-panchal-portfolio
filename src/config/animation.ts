@@ -646,7 +646,13 @@ export const HERO = {
 export const SWEEP = {
   /** Cool grey, deliberately off the warm palette so it stays background. */
   color: '#9aa4b4',
-  opacity: 0.11,
+  /**
+   * Two lines live BEHIND the mark and two IN FRONT of it, and none of them
+   * ever passes through it: a hairline cutting across a solid object read as
+   * a wire through the logo. `layer` on each line picks which; the front pair
+   * are a touch brighter, the way something nearer reads. See SweepLines.
+   */
+  opacity: { back: 0.1, front: 0.14 },
   /** Points sampled along each arc. */
   segments: 128,
   lines: [
@@ -658,6 +664,7 @@ export const SWEEP = {
       tilt: [0, 0.22, 0.62] as [number, number, number],
       axis: [1, 0.22, 0.1] as [number, number, number],
       speed: 0.036,
+      layer: 'back',
     },
     {
       id: 'b',
@@ -667,6 +674,7 @@ export const SWEEP = {
       tilt: [0, -0.55, -0.38] as [number, number, number],
       axis: [1, -0.16, 0.26] as [number, number, number],
       speed: -0.027,
+      layer: 'front',
     },
     {
       id: 'c',
@@ -676,8 +684,19 @@ export const SWEEP = {
       tilt: [0, 0.34, 1.15] as [number, number, number],
       axis: [1, 0.3, -0.14] as [number, number, number],
       speed: 0.049,
+      layer: 'back',
     },
-  ],
+    {
+      id: 'd',
+      halfLength: 16,
+      bow: 1.05,
+      position: [0.2, -0.3, 1.5] as [number, number, number],
+      tilt: [0, 0.42, -0.95] as [number, number, number],
+      axis: [1, -0.24, 0.18] as [number, number, number],
+      speed: 0.031,
+      layer: 'front',
+    },
+  ] as const,
 
   /**
    * THE DISCHARGE.

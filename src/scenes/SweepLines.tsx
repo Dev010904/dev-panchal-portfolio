@@ -14,18 +14,20 @@ const STRIKE = SWEEP.strike;
 /**
  * THE SWEEP LINES.
  *
- * Three hairline arcs, each spanning far beyond the viewport, each turning
+ * Four hairline arcs, each spanning far beyond the viewport, each turning
  * slowly about very nearly its own length. They are real geometry rather than a
- * fullscreen pass so the mark can occlude them.
+ * fullscreen pass so they can sit on either side of the mark.
  *
- * ALWAYS BEHIND THE MARK. They used to depth-test at their true depth, and as
- * they turn their midsections swing through the mark's own depth — so a line
- * would cut across the stem or the bowl, which on screen reads as a wire passing
- * THROUGH a solid object. Reported on the live site as not looking real. Their
- * depth is now pinned to the back of the frustum (see the vertex patch below):
- * the lines still sweep, still discharge under the cursor, and the mark always
- * stands in front of them, which is how lines drawn on the room behind it
- * would behave.
+ * TWO BEHIND, TWO IN FRONT, NONE THROUGH. They used to depth-test at their
+ * true depth, and as they turn their midsections swing through the mark's own
+ * depth — so a line would cut across the stem or the bowl, which on screen reads
+ * as a wire passing THROUGH a solid object. Reported on the live site as not
+ * looking real. Each line now has a layer (SWEEP.lines[].layer):
+ *
+ *   back    depth pinned to the back of the frustum: the mark always occludes it
+ *   front   drawn over everything: it always passes in front of the mark
+ *
+ * Same sweep, same discharges; only the depth is decided rather than incidental.
  *
  * Everything is a closed-form function of `clock.elapsedTime` rather than an
  * accumulated rotation. That means the pose is reproducible, the frame-stepping
@@ -71,26 +73,35 @@ export function SweepLines() {
     [],
   );
 
-  const lineMaterial = useMemo(() => {
-    const m = new THREE.LineBasicMaterial({
+  const lineMaterials = useMemo(() => {
+    const back = new THREE.LineBasicMaterial({
       color: new THREE.Color(SWEEP.color),
       transparent: true,
-      opacity: SWEEP.opacity,
-      // Depth *test* on so the mark occludes them; depth *write* off so three
+      opacity: SWEEP.opacity.back,
+      // Depth *test* on so the mark occludes them; depth *write* off so the
       // lines crossing each other never punch holes in one another.
       depthTest: true,
       depthWrite: false,
     });
     // Pin the depth to the back of the frustum, so anything solid — the mark —
     // is always in front. Screen position is untouched.
-    m.onBeforeCompile = (shader) => {
+    back.onBeforeCompile = (shader) => {
       shader.vertexShader = shader.vertexShader.replace(
         '#include <project_vertex>',
         '#include <project_vertex>\n\tgl_Position.z = gl_Position.w * 0.99995;',
       );
     };
-    m.customProgramCacheKey = () => 'sweep-behind';
-    return m;
+    back.customProgramCacheKey = () => 'sweep-behind';
+
+    // In front of everything, the mark included: no depth test at all.
+    const front = new THREE.LineBasicMaterial({
+      color: new THREE.Color(SWEEP.color),
+      transparent: true,
+      opacity: SWEEP.opacity.front,
+      depthTest: false,
+      depthWrite: false,
+    });
+    return { back, front };
   }, []);
 
   // ── Strike pool ───────────────────────────────────────────────────────────
@@ -116,9 +127,10 @@ export function SweepLines() {
         s.core.dispose();
         s.halo.dispose();
       });
-      lineMaterial.dispose();
+      lineMaterials.back.dispose();
+      lineMaterials.front.dispose();
     },
-    [curves, strikes, lineMaterial],
+    [curves, strikes, lineMaterials],
   );
 
   // ── Refs and scratch ──────────────────────────────────────────────────────
@@ -132,8 +144,14 @@ export function SweepLines() {
   // them in the returned JSX would make a new THREE.Line on every React render
   // and quietly leak one per render.
   const lineObjects = useMemo(
-    () => curves.map((c) => new THREE.Line(c.geometry, lineMaterial)),
-    [curves, lineMaterial],
+    () =>
+      curves.map((c, i) => {
+        const line = new THREE.Line(c.geometry, lineMaterials[SWEEP.lines[i].layer]);
+        // Front lines draw after everything else in the transparent pass.
+        if (SWEEP.lines[i].layer === 'front') line.renderOrder = 20;
+        return line;
+      }),
+    [curves, lineMaterials],
   );
 
   // Two meshes per bolt sharing one geometry: the halo draws first and wider,
@@ -295,6 +313,14 @@ export function SweepLines() {
       // Branching, tapered, two-octave path — written into the pooled buffers
       // in place. See scenes/bolt.ts.
       strike(bolt, t, scratch.hit, scratch.perp, scratch.lateral, scratch.view);
+
+      // A bolt takes its line's side of the mark: occluded with a back line,
+      // over the mark with a front one.
+      const behind = SWEEP.lines[i].layer === 'back';
+      core.depthTest = behind;
+      halo.depthTest = behind;
+      mesh.core.renderOrder = behind ? 10 : 22;
+      mesh.halo.renderOrder = behind ? 10 : 21;
 
       core.uniforms.uFlicker.value = 1;
       halo.uniforms.uFlicker.value = 1;
