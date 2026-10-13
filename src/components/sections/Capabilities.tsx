@@ -321,6 +321,11 @@ export function Capabilities() {
 
           <TitleBlock />
         </div>
+        {/* The sheet's end: the same ember line it was exposed by, so leaving it
+            is as deliberate as arriving. */}
+        <div className="sheet-end" aria-hidden="true">
+          <span className="t-mono">SHEET C · END</span>
+        </div>
       </div>
     </section>
   );
