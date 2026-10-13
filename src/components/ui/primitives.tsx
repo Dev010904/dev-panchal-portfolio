@@ -30,6 +30,19 @@ export function Plus({ className = '' }: { className?: string }) {
   );
 }
 
+/** The four corner marks of a section. */
+export function CornerMarks({ inset = 'var(--gutter)' }: { inset?: string }) {
+  const s = { '--i': inset } as React.CSSProperties;
+  return (
+    <div className="pointer-events-none absolute inset-0 z-10" style={s} aria-hidden="true">
+      <Plus className="left-[var(--i)] top-[var(--i)]" />
+      <Plus className="right-[var(--i)] top-[var(--i)]" />
+      <Plus className="bottom-[var(--i)] left-[var(--i)]" />
+      <Plus className="bottom-[var(--i)] right-[var(--i)]" />
+    </div>
+  );
+}
+
 /**
  * Section marker: a short ember tick, a hairline, then the name.
  *
