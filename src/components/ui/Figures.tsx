@@ -12,8 +12,9 @@ import type { FigureId } from '@/data/capabilities';
  *   .plot.construct    construction lines: dashed, faint, drawn first
  *   .plot.callout      dimensions and callouts, in the ember
  *
- * `vector-effect: non-scaling-stroke` keeps every hairline a hairline at any
- * size the column gives the drawing.
+ * Stroke widths are in drawing units, not `non-scaling-stroke`: that moves
+ * the dash pattern into screen pixels and breaks the pathLength trick (see the
+ * note on .figure .plot in globals.css).
  */
 export function Figure({ id }: { id: FigureId }) {
   const common = {
