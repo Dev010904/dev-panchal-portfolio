@@ -733,24 +733,27 @@ button {
 }
 
 /* The capability drawings: the pen plots each stroke via its dash offset. */
+/* No non-scaling-stroke: it moves the dash pattern into screen pixels while
+   pathLength normalises it in drawing units, and a scaled-up stroke then only
+   gets part of its dash — the cube's edges stopped halfway. Widths are in
+   drawing units instead; at the sizes the column gives, still a hairline. */
 .figure .plot {
   stroke: var(--color-fg);
-  stroke-width: 1.15;
+  stroke-width: 1;
   stroke-linecap: round;
   stroke-linejoin: round;
-  vector-effect: non-scaling-stroke;
   stroke-dasharray: 1;
   stroke-dashoffset: 0;
 }
 .figure .plot.construct {
   stroke: rgba(11, 11, 13, 0.2);
-  stroke-width: 1;
+  stroke-width: 0.8;
 }
 .figure .plot.callout {
   stroke: var(--color-accent);
 }
 .figure .plot-heavy {
-  stroke-width: 2;
+  stroke-width: 1.8;
 }
 .figure .fig-label {
   font-family: var(--font-mono);
