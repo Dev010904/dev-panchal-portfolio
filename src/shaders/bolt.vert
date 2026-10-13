@@ -40,4 +40,7 @@ void main() {
   vIntensity = aIntensity;
 
   gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+  // On the plane the sweep lines live on, just in front of it, so the mark
+  // occludes a bolt exactly where it occludes the line it came from.
+  gl_Position.z = gl_Position.w * 0.9999;
 }

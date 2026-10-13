@@ -19,6 +19,32 @@ import { useScene } from '@/store/scene';
  * chip hard bottom-right, hint label bottom-centre — so the object owns the
  * optical middle without anything being centred.
  */
+/** An eight-ray burst that charges and releases, like the hold it labels. */
+function BlastGlyph() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" className="blast-glyph h-[1.25em] w-[1.25em]" fill="none">
+      {Array.from({ length: 8 }, (_, i) => {
+        const a = (i * Math.PI) / 4;
+        const r0 = 3.4;
+        const r1 = i % 2 === 0 ? 7.4 : 5.8;
+        return (
+          <line
+            key={i}
+            x1={8 + Math.cos(a) * r0}
+            y1={8 + Math.sin(a) * r0}
+            x2={8 + Math.cos(a) * r1}
+            y2={8 + Math.sin(a) * r1}
+            stroke="currentColor"
+            strokeWidth={1.4}
+            strokeLinecap="round"
+          />
+        );
+      })}
+      <circle cx={8} cy={8} r={1.7} fill="currentColor" />
+    </svg>
+  );
+}
+
 export function Hero() {
   const root = useRef<HTMLElement>(null);
   const entered = useScene((s) => s.entered);
@@ -148,9 +174,10 @@ export function Hero() {
       >
         <span data-blast className="t-label flex items-center gap-2 text-[var(--color-fg)]">
           HOLD TO
-          <span aria-hidden="true" className="spark text-[1.05em] leading-none">
-            ⚡
-          </span>
+          {/* A detonation, not a spark: the lightning belongs to the lines
+              below. Drawn rather than an emoji, so it is the ember and the
+              site's line weight instead of the platform's colour font. */}
+          <BlastGlyph />
           BLAST
         </span>
         <span data-blast className="t-label flex items-center gap-2">

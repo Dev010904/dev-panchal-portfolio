@@ -16,10 +16,16 @@ const STRIKE = SWEEP.strike;
  *
  * Three hairline arcs, each spanning far beyond the viewport, each turning
  * slowly about very nearly its own length. They are real geometry rather than a
- * fullscreen pass for one reason: they depth-test against the mark, so each
- * line crosses in front of it and then disappears behind it as it turns. A
- * screen-space field cannot do that, and that occlusion is the only thing here
- * that actually reads as depth.
+ * fullscreen pass so the mark can occlude them.
+ *
+ * ALWAYS BEHIND THE MARK. They used to depth-test at their true depth, and as
+ * they turn their midsections swing through the mark's own depth — so a line
+ * would cut across the stem or the bowl, which on screen reads as a wire passing
+ * THROUGH a solid object. Reported on the live site as not looking real. Their
+ * depth is now pinned to the back of the frustum (see the vertex patch below):
+ * the lines still sweep, still discharge under the cursor, and the mark always
+ * stands in front of them, which is how lines drawn on the room behind it
+ * would behave.
  *
  * Everything is a closed-form function of `clock.elapsedTime` rather than an
  * accumulated rotation. That means the pose is reproducible, the frame-stepping
@@ -65,19 +71,27 @@ export function SweepLines() {
     [],
   );
 
-  const lineMaterial = useMemo(
-    () =>
-      new THREE.LineBasicMaterial({
-        color: new THREE.Color(SWEEP.color),
-        transparent: true,
-        opacity: SWEEP.opacity,
-        // Depth *test* on so the mark occludes them; depth *write* off so three
-        // lines crossing each other never punch holes in one another.
-        depthTest: true,
-        depthWrite: false,
-      }),
-    [],
-  );
+  const lineMaterial = useMemo(() => {
+    const m = new THREE.LineBasicMaterial({
+      color: new THREE.Color(SWEEP.color),
+      transparent: true,
+      opacity: SWEEP.opacity,
+      // Depth *test* on so the mark occludes them; depth *write* off so three
+      // lines crossing each other never punch holes in one another.
+      depthTest: true,
+      depthWrite: false,
+    });
+    // Pin the depth to the back of the frustum, so anything solid — the mark —
+    // is always in front. Screen position is untouched.
+    m.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <project_vertex>',
+        '#include <project_vertex>\n\tgl_Position.z = gl_Position.w * 0.99995;',
+      );
+    };
+    m.customProgramCacheKey = () => 'sweep-behind';
+    return m;
+  }, []);
 
   // ── Strike pool ───────────────────────────────────────────────────────────
   // Each pooled bolt owns its own pair of materials rather than sharing one.

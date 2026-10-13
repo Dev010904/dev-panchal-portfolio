@@ -72,9 +72,11 @@ export function createBoltMaterial(layer: typeof S.core | typeof S.halo) {
     glslVersion: GLSL3,
     transparent: true,
     blending: THREE.AdditiveBlending,
-    // Always on top: a bolt is the brightest thing on screen and clipping it
-    // against the object it just jumped off looks like a z-fighting fault.
-    depthTest: false,
+    // Tested against the mark at the depth its line now lives at (the back of
+    // the frustum — see SweepLines and the end of bolt.vert): a bolt fired
+    // from a stretch of line hidden behind the mark is hidden with it, rather
+    // than crackling across the front of a solid object.
+    depthTest: true,
     depthWrite: false,
     side: THREE.DoubleSide,
     uniforms: {
