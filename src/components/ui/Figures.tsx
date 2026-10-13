@@ -105,16 +105,18 @@ export function Figure({ id }: { id: FigureId }) {
             const [ox, oy] = at(V.findIndex((v) => v[0] === 1 && v[1] === -1 && v[2] === 1));
             return (
               <>
-                <line className="plot callout" pathLength={1} x1={ox} y1={oy} x2={ox + 64} y2={oy - 37} />
-                <line className="plot callout" pathLength={1} x1={ox} y1={oy} x2={ox - 64} y2={oy - 37} />
-                <line className="plot callout" pathLength={1} x1={ox} y1={oy} x2={ox} y2={oy + 46} />
-                <text className="fig-label fig-callout" x={ox + 70} y={oy - 40}>
+                {/* Out of the near corner, away from the cube: +X down-right,
+                    +Z down-left in this projection, and −Y straight down. */}
+                <line className="plot callout" pathLength={1} x1={ox} y1={oy} x2={ox + 52} y2={oy + 30} />
+                <line className="plot callout" pathLength={1} x1={ox} y1={oy} x2={ox - 52} y2={oy + 30} />
+                <line className="plot callout" pathLength={1} x1={ox} y1={oy} x2={ox} y2={oy + 44} />
+                <text className="fig-label fig-callout" x={ox + 58} y={oy + 38}>
                   X
                 </text>
-                <text className="fig-label fig-callout" x={ox - 78} y={oy - 40}>
+                <text className="fig-label fig-callout" x={ox - 68} y={oy + 38}>
                   Z
                 </text>
-                <text className="fig-label fig-callout" x={ox + 6} y={oy + 52}>
+                <text className="fig-label fig-callout" x={ox + 6} y={oy + 56}>
                   −Y
                 </text>
               </>

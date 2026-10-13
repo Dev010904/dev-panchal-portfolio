@@ -781,3 +781,22 @@ html.on-light [data-ink-adapt] {
   --color-fg-dim: rgba(11, 11, 13, 0.58);
   --color-rule: rgba(11, 11, 13, 0.16);
 }
+/* The bottom edge of the sheet: the exposure line again, and its readout. */
+.sheet-end {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--color-accent);
+  box-shadow:
+    0 0 2px rgba(255, 214, 190, 0.9),
+    0 0 22px 3px rgba(255, 90, 31, 0.5);
+  pointer-events: none;
+}
+.sheet-end > span {
+  position: absolute;
+  right: var(--gutter);
+  bottom: 10px;
+  color: var(--color-accent);
+}

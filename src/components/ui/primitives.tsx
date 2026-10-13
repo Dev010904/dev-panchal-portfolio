@@ -2,6 +2,7 @@
 
 import { forwardRef, useEffect, useRef, useState } from 'react';
 import { RAIL } from '@/config/animation';
+import { decode } from '@/lib/decode';
 import { addStep } from '@/lib/steps';
 import { useScene } from '@/store/scene';
 
@@ -42,16 +43,6 @@ export function CornerMarks({ inset = 'var(--gutter)' }: { inset?: string }) {
   );
 }
 
-export function Label({
-  children,
-  className = '',
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <span className={`t-label ${className}`}>{children}</span>;
-}
-
 /**
  * Section marker: a short ember tick, a hairline, then the name.
  *
@@ -61,11 +52,37 @@ export function Label({
  * same structural weight without pretending the order is information.
  */
 export function SectionTag({ name }: { name: string }) {
+  const text = useRef<HTMLSpanElement>(null);
+
+  // The name reads in the first time the rail comes into view — the site's
+  // one text effect (lib/decode), settling like an instrument finding its
+  // value. Once per rail; never for reduced motion.
+  useEffect(() => {
+    const el = text.current;
+    if (!el || useScene.getState().reducedMotion) return;
+    let stop: (() => void) | null = null;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        io.disconnect();
+        stop = decode(el, name, { duration: 0.5 });
+      },
+      { threshold: 0.6 },
+    );
+    io.observe(el);
+    return () => {
+      io.disconnect();
+      stop?.();
+    };
+  }, [name]);
+
   return (
-    <div className="flex items-baseline gap-3">
+    <div className="flex items-baseline gap-3" aria-label={name}>
       <span aria-hidden="true" className="h-px w-2 bg-[var(--color-accent)]" />
       <span aria-hidden="true" className="h-px w-8 bg-[var(--color-rule)]" />
-      <Label>{name}</Label>
+      <span ref={text} aria-hidden="true" className="t-label">
+        {name}
+      </span>
     </div>
   );
 }
