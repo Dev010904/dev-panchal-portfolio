@@ -9,7 +9,7 @@ import type { FigureId } from '@/data/capabilities';
  * pen drawing it in. Three weights, three meanings:
  *
  *   .plot              the object itself, in ink
- *   .plot.construct    construction lines: dashed, faint, drawn first
+ *   .plot.construct    construction lines: faint, drawn first
  *   .plot.callout      dimensions and callouts, in the ember
  *
  * Stroke widths are in drawing units, not `non-scaling-stroke`: that moves
