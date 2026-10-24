@@ -191,7 +191,8 @@ function Ribbon({
       if (el?.closest('a, button, input, textarea, select')) return;
       const i = workHandle.hover;
       if (i < 0 || i >= projects.length) return;
-      window.open(primaryLink(projects[i]).href, '_blank', 'noopener,noreferrer');
+      const link = primaryLink(projects[i]);
+      if (link) window.open(link.href, '_blank', 'noopener,noreferrer');
     };
     window.addEventListener('click', onClick);
     return () => window.removeEventListener('click', onClick);
@@ -327,7 +328,8 @@ function Driver({
 
     if (hit !== workHandle.hover) {
       workHandle.hover = hit;
-      useScene.getState().setHovering(hit >= 0);
+      // The cursor promises a click only where there is somewhere to go.
+      useScene.getState().setHovering(hit >= 0 && primaryLink(projects[hit]) !== undefined);
     }
   });
   return null;

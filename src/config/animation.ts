@@ -1070,7 +1070,7 @@ export const MARQUEE = {
    * -ln(0.92) × 60.
    */
   velocityDecay: 5,
-  words: ['THREE.JS', 'WEBGL', 'GSAP', 'REACT', 'MOTION'],
+  words: ['WEB APPS', 'DATA', 'AI', 'THREE.JS', 'MOTION'],
 } as const;
 
 /**

@@ -11,9 +11,10 @@ export const email = () => EMAIL_PARTS.join('');
 
 export const site = {
   name: 'Dev Panchal',
-  role: 'Web Developer',
-  title: 'Dev Panchal — Web Developer & 3D Web Experiences',
-  description: 'Websites and interactive 3D experiences built with Three.js, WebGL and GSAP.',
+  role: 'Full-Stack Developer',
+  title: 'Dev Panchal — Full-Stack Developer · Web, Data & AI',
+  description:
+    'Full-stack developer working across web apps, data analysis and AI: business software, dashboards, LLM-powered products and interactive 3D for the browser.',
   /**
    * The canonical origin, and it has to be the real one.
    *
@@ -29,7 +30,7 @@ export const site = {
     // The number is not printed anywhere on the page; the wa.me link opens
     // the chat directly, so a visitor never needs to read or dial it.
     display: 'WhatsApp',
-    href: 'https://wa.me/918460289432',
+    href: 'https://wa.me/917284923872',
   },
   // The platform name, not the handle, on all three. The link is the address;
   // printing the username as well says nothing extra and scatters the handle
@@ -76,13 +77,13 @@ export const site = {
  * Instagram would rank it below both.
  *
  * The size is printed next to the link on purpose. An unlabelled PDF on mobile
- * data is a gamble, and 68 KB is small enough that saying so removes the only
+ * data is a gamble, and 110 KB is small enough that saying so removes the only
  * reason someone would hesitate.
  */
 export const resume = {
   href: '/Dev_Panchal_Resume.pdf',
   /** Rounded from the real file. Update this if the PDF is replaced. */
-  size: '68 KB',
+  size: '110 KB',
   /**
    * What the browser saves it as. The file in `public/` is named for the repo;
    * this is named for the person receiving it, who will have it in a downloads

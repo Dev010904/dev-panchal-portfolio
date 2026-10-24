@@ -10,7 +10,7 @@ import { SectionTag, useRailFade } from '@/components/ui/primitives';
 import { useScene } from '@/store/scene';
 
 const COPY =
-  'I build websites, and I make things move in the browser. Most of what I make sits somewhere between design and engineering. Currently taking on freelance work.';
+  'I build websites and the software businesses run on, find what data is actually saying, and put AI to work inside real products. Most recently, three months as a web development intern at ANK Design & Automation Solutions. Open to full-time roles and freelance work.';
 
 /**
  * ABOUT — three sentences, first person, no register above plain.
@@ -95,9 +95,9 @@ export function About() {
         </p>
 
         <div className="col-span-12 flex flex-wrap gap-x-12 gap-y-4 lg:col-span-9">
-          <Meta label="AVAILABLE" value="FREELANCE" accent />
-          <Meta label="DISCIPLINES" value="WEB · WEBGL · MOTION" />
-          <Meta label="TOOLS" value="NEXT · THREE · GSAP" />
+          <Meta label="AVAILABLE" value="FULL-TIME · FREELANCE" accent />
+          <Meta label="DISCIPLINES" value="WEB · DATA · AI · 3D" />
+          <Meta label="TOOLS" value="NEXT · PYTHON · SQL · THREE" />
         </div>
       </div>
     </section>

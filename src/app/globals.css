@@ -732,6 +732,59 @@ button {
   }
 }
 
+/* The schedule of work: the table a drawing keeps beside its title block.
+   Three columns on a wide sheet; on a phone the spec drops under the work. */
+.sheet-schedule {
+  list-style: none;
+  border-top: 1px solid var(--color-fg);
+}
+.sheet-schedule > li {
+  display: grid;
+  grid-template-columns: 2.6rem minmax(0, 1fr);
+  column-gap: 1rem;
+  row-gap: 0.4rem;
+  align-items: baseline;
+  padding: 0.95rem 0;
+  border-bottom: 1px solid var(--color-rule);
+}
+.sheet-schedule > li > :nth-child(3) {
+  grid-column: 2;
+}
+.sheet-schedule-head {
+  padding: 0.6rem 0 !important;
+}
+.sheet-schedule-head > :nth-child(3) {
+  display: none;
+}
+.sheet-schedule-row > :nth-child(2) {
+  font-size: clamp(0.98rem, 1.05vw, 1.08rem);
+  line-height: 1.45;
+}
+@media (min-width: 1024px) {
+  .sheet-schedule > li {
+    grid-template-columns: 2.6rem minmax(0, 1fr) minmax(9rem, 13rem);
+  }
+  .sheet-schedule > li > :nth-child(3) {
+    grid-column: auto;
+    text-align: right;
+  }
+  .sheet-schedule-head > :nth-child(3) {
+    display: inline;
+  }
+}
+/* The stamp a finished job gets: a double-ruled box in the ember. */
+.sheet-stamp {
+  display: inline-block;
+  margin-top: 0.4rem;
+  padding: 0.55rem 0.85rem;
+  border: 1.5px solid var(--color-accent);
+  outline: 1px solid var(--color-accent);
+  outline-offset: 3px;
+  color: var(--color-accent);
+  letter-spacing: 0.18em;
+  transform-origin: 30% 60%;
+}
+
 /* The capability drawings: the pen plots each stroke via its dash offset. */
 /* No non-scaling-stroke: it moves the dash pattern into screen pixels while
    pathLength normalises it in drawing units, and a scaled-up stroke then only

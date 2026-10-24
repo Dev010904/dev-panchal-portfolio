@@ -101,7 +101,7 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Person',
   name: site.name,
-  jobTitle: 'Web Developer',
+  jobTitle: site.role,
   description: site.description,
   email: `mailto:${email()}`,
   url: site.url,
@@ -110,7 +110,18 @@ const jsonLd = {
     ...site.address,
   },
   sameAs: [site.github.href, site.linkedin.href, site.instagram.href],
-  knowsAbout: ['Three.js', 'WebGL', 'GSAP', 'React', 'Next.js'],
+  knowsAbout: [
+    'Next.js',
+    'React',
+    'TypeScript',
+    'PostgreSQL',
+    'Python',
+    'Data analysis',
+    'Power BI',
+    'Generative AI',
+    'Three.js',
+    'WebGL',
+  ],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

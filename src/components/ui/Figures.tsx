@@ -133,75 +133,126 @@ export function Figure({ id }: { id: FigureId }) {
       );
     }
 
-    case 'motion':
+    case 'data': {
+      // The real distribution, from the cleaned APL Logistics order book:
+      // 172,765 realised order lines, binned by profit margin. The first bar
+      // is everything below −80%; the rest are 10-point bands up to +60%.
+      // Loss-making bands are drawn in the ember.
+      const share = [4.25, 2.62, 1.41, 0.42, 0.53, 0.66, 2.91, 2.99, 2.9, 10.83, 10.94, 17.17, 21.52, 19.53, 1.31];
+      const base = 250;
+      const scale = 7.4;
+      const x = (k: number) => 56 + k * 26;
+      // Margin m (as a fraction) to x: the gap between bands sits on each edge.
+      const at = (m: number) => 56 + (1 + (m + 0.8) / 0.1) * 26 - 4;
+      const avg = at(0.1203);
       return (
         <svg {...common}>
-          {Array.from({ length: 10 }, (_, k) => (
+          {[5, 10, 15, 20].map((pct) => (
             <line
-              key={k}
+              key={pct}
               className="plot construct"
               pathLength={1}
-              x1={60 + (k + 1) * 38}
-              y1={52}
-              x2={60 + (k + 1) * 38}
-              y2={250}
+              x1={44}
+              y1={base - pct * scale}
+              x2={446}
+              y2={base - pct * scale}
             />
           ))}
-          <line className="plot" pathLength={1} x1={60} y1={250} x2={446} y2={250} />
-          <line className="plot" pathLength={1} x1={60} y1={250} x2={60} y2={40} />
-          {/* the handles, then the curve they make */}
-          <line className="plot construct" pathLength={1} x1={60} y1={250} x2={118} y2={62} />
-          <line className="plot construct" pathLength={1} x1={440} y1={52} x2={210} y2={54} />
-          <circle className="plot" pathLength={1} cx={118} cy={62} r={4} />
-          <circle className="plot" pathLength={1} cx={210} cy={54} r={4} />
-          <path className="plot plot-heavy" pathLength={1} d="M 60 250 C 118 62, 210 54, 440 52" />
-          <path className="plot" pathLength={1} d="M 60 244 l 6 6 l -6 6 l -6 -6 z" />
-          <path className="plot" pathLength={1} d="M 440 46 l 6 6 l -6 6 l -6 -6 z" />
-          {/* the playhead */}
-          <line className="plot callout" pathLength={1} x1={250} y1={30} x2={250} y2={262} />
-          <text className="fig-label fig-callout" x={256} y={30}>
-            t = 0.42
+          <line className="plot construct" pathLength={1} x1={at(0)} y1={base} x2={at(0)} y2={70} />
+          <line className="plot" pathLength={1} x1={44} y1={base} x2={446} y2={base} />
+          <line className="plot" pathLength={1} x1={44} y1={base} x2={44} y2={60} />
+          {share.map((v, k) => (
+            <rect
+              key={k}
+              className={k < 9 ? 'plot callout' : 'plot'}
+              pathLength={1}
+              x={x(k)}
+              y={base - v * scale}
+              width={18}
+              height={v * scale}
+            />
+          ))}
+          {/* the loss-making lines, bracketed */}
+          <path className="plot callout" pathLength={1} d={`M ${x(0)} 196 L ${x(0)} 190 L ${x(8) + 18} 190 L ${x(8) + 18} 196`} />
+          <text className="fig-label fig-callout" x={(x(0) + x(8) + 18) / 2} y={182} textAnchor="middle">
+            18.7% OF LINES · −$3.71M
           </text>
-          <text className="fig-label" x={446} y={270} textAnchor="end">
-            TIME
+          {/* the book's average */}
+          <line className="plot callout" pathLength={1} x1={avg} y1={base} x2={avg} y2={60} />
+          <text className="fig-label fig-callout" x={avg + 6} y={66}>
+            AVG 12.0%
           </text>
-          <text className="fig-label" x={66} y={36}>
-            VALUE
+          {[-0.8, -0.4, 0, 0.4].map((m) => (
+            <text key={m} className="fig-label" x={at(m)} y={266} textAnchor="middle">
+              {m === 0 ? '0' : `${m > 0 ? '+' : '−'}${Math.abs(m * 100)}`}
+            </text>
+          ))}
+          <text className="fig-label" x={446} y={286} textAnchor="end">
+            MARGIN %
+          </text>
+          <text className="fig-label" x={50} y={52}>
+            SHARE OF LINES
           </text>
         </svg>
       );
+    }
 
-    case 'performance': {
-      // Frame times in ms, one of them blown and called out.
-      const frames = [11.2, 12.1, 10.8, 13.4, 12.6, 11.9, 24.8, 12.2, 11.4, 10.9, 12.8, 11.6, 12.3, 11.1, 13.0, 12.4, 11.8];
-      const base = 250;
-      const scale = 6.4;
-      const budgetY = base - 16.7 * scale;
+    case 'ai': {
+      // KAAM KARO's loop, drawn as a schematic: the model plans, the app
+      // checks, a critical deadline gets a rescue plan, and a slow or
+      // rate-limited model falls back to a local planner instead of failing.
+      const node = (x: number, y: number, w: number, h: number, label: string, cls = 'plot') => (
+        <g key={label}>
+          <rect className={cls} pathLength={1} x={x} y={y} width={w} height={h} rx={4} />
+          <text
+            className={`fig-label ${cls.includes('callout') ? 'fig-callout' : ''}`}
+            x={x + w / 2}
+            y={y + h / 2 + 4}
+            textAnchor="middle"
+          >
+            {label}
+          </text>
+        </g>
+      );
+      const head = (d: string, cls = 'plot') => <path className={cls} pathLength={1} d={d} />;
       return (
         <svg {...common}>
-          <line className="plot" pathLength={1} x1={44} y1={base} x2={446} y2={base} />
-          <line className="plot" pathLength={1} x1={44} y1={base} x2={44} y2={50} />
-          {frames.map((ms, i) => {
-            const x = 56 + i * 22.5;
-            const h = ms * scale;
-            return (
-              <rect
-                key={i}
-                className={ms > 16.7 ? 'plot callout' : 'plot'}
-                pathLength={1}
-                x={x}
-                y={base - h}
-                width={13}
-                height={h}
-              />
-            );
-          })}
-          <line className="plot callout plot-dash" pathLength={1} x1={44} y1={budgetY} x2={446} y2={budgetY} />
-          <text className="fig-label fig-callout" x={446} y={budgetY - 7} textAnchor="end">
-            16.7 MS · 60 FPS
+          {/* the fallback and the daily replan, faint: the paths it takes when it has to */}
+          <line className="plot construct" pathLength={1} x1={218} y1={96} x2={218} y2={176} />
+          {head('M 214 170 L 218 176 L 222 170', 'plot construct')}
+          <path className="plot construct" pathLength={1} d="M 336 262 L 70 262 L 70 96" />
+          {head('M 66 102 L 70 96 L 74 102', 'plot construct')}
+
+          {node(24, 56, 92, 40, 'DEADLINE')}
+          {node(164, 56, 108, 40, 'GEMINI')}
+          {node(320, 56, 136, 40, 'CLASSIFY')}
+          <line className="plot" pathLength={1} x1={116} y1={76} x2={164} y2={76} />
+          {head('M 158 72 L 164 76 L 158 80')}
+          <line className="plot" pathLength={1} x1={272} y1={76} x2={320} y2={76} />
+          {head('M 314 72 L 320 76 L 314 80')}
+
+          {/* the verdict, one of four */}
+          <line className="plot" pathLength={1} x1={388} y1={96} x2={388} y2={120} />
+          {node(336, 120, 104, 20, 'SAFE')}
+          {node(336, 146, 104, 20, 'AT RISK')}
+          {node(336, 172, 104, 20, 'CRITICAL', 'plot callout')}
+          {node(336, 198, 104, 20, 'OVERDUE')}
+
+          {/* the local planner feeds the same check */}
+          {node(164, 176, 108, 40, 'LOCAL PLAN')}
+          <path className="plot" pathLength={1} d="M 272 196 L 300 196 L 300 86 L 320 86" />
+          {head('M 314 82 L 320 86 L 314 90')}
+
+          {/* critical → rescue */}
+          {node(336, 244, 104, 36, 'RESCUE PLAN')}
+          <path className="plot callout" pathLength={1} d="M 440 182 L 458 182 L 458 262 L 440 262" />
+          {head('M 446 258 L 440 262 L 446 266', 'plot callout')}
+
+          <text className="fig-label" x={210} y={140} textAnchor="end">
+            TIMEOUT · 429
           </text>
-          <text className="fig-label" x={50} y={44}>
-            FRAME TIME
+          <text className="fig-label" x={80} y={254}>
+            REPLAN DAILY
           </text>
         </svg>
       );

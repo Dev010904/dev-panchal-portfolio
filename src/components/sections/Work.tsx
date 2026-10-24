@@ -226,15 +226,19 @@ export function Work() {
             {/* Every destination, not just the primary. A project with a live
                 app, a repository and a write-up has three peers. */}
             <div data-meta className="mt-1 flex flex-col gap-1">
-              {project.links.map((l) => (
-                <ArrowLink
-                  key={l.href}
-                  label={l.label}
-                  href={l.href}
-                  external
-                  tone={l.href === primaryLink(project).href ? 'accent' : 'default'}
-                />
-              ))}
+              {project.links.length ? (
+                project.links.map((l) => (
+                  <ArrowLink
+                    key={l.href}
+                    label={l.label}
+                    href={l.href}
+                    external
+                    tone={l.href === primaryLink(project)?.href ? 'accent' : 'default'}
+                  />
+                ))
+              ) : (
+                <span className="t-label">PRIVATE · THE CLIENT&apos;S OWN DATA, BEHIND A LOGIN</span>
+              )}
             </div>
           </div>
 
@@ -255,13 +259,20 @@ export function Work() {
           rather than `display: none` so focus can actually land on them.
         */}
         <ul className="sr-only">
-          {projects.map((p) => (
-            <li key={p.id}>
-              <a href={primaryLink(p).href} target="_blank" rel="noopener noreferrer">
-                {p.title} — {p.summary}
-              </a>
-            </li>
-          ))}
+          {projects.map((p) => {
+            const link = primaryLink(p);
+            return (
+              <li key={p.id}>
+                {link ? (
+                  <a href={link.href} target="_blank" rel="noopener noreferrer">
+                    {p.title} — {p.summary}
+                  </a>
+                ) : (
+                  `${p.title} — ${p.summary} (private client software)`
+                )}
+              </li>
+            );
+          })}
         </ul>
       </div>
 
@@ -270,7 +281,7 @@ export function Work() {
         <div className="col-span-12 h-px bg-[var(--color-rule)]" />
         <div className="col-span-12 flex flex-wrap items-end justify-between gap-x-10 gap-y-6">
           <p className="t-body max-w-[38ch]">
-            More work in progress — currently taking on freelance.
+            More in progress. Open to full-time roles and freelance work.
           </p>
           {/* Plain ArrowLink, same as PageShell's "BACK TO INDEX" — wrapping it
               in a next/link would nest an anchor inside an anchor. */}

@@ -109,7 +109,7 @@ export function Hero() {
             targets rather than the words inside them, because the mask clips —
             a word thrown out of its own mask would simply vanish. */}
         <h1 className="col-span-12 lg:col-span-8">
-          <span className="sr-only">Static is a choice. Dev Panchal, web developer.</span>
+          <span className="sr-only">Static is a choice. Dev Panchal, full-stack developer: web, data and AI.</span>
           <span aria-hidden="true" className="t-display block">
             <span data-hero-line data-blast className="line-mask">
               <span className="block will-change-transform">Static is</span>
@@ -129,7 +129,7 @@ export function Hero() {
           />
 
           <p data-hero-fade className="t-lead max-w-[34ch] text-[var(--color-fg)] opacity-0">
-            Web developer — websites, WebGL, motion.
+            Full-stack developer — web apps, data and AI.
           </p>
 
           <span data-hero-fade className="block opacity-0">
@@ -144,13 +144,13 @@ export function Hero() {
 
         <div data-blast className="col-span-12 flex flex-col items-start gap-4 md:col-span-6 md:items-end lg:col-start-9 lg:col-span-4">
           <div data-hero-fade className="chip opacity-0">
-            <span className="t-label text-[var(--color-fg)]">WEB · 3D · MOTION</span>
+            <span className="t-label text-[var(--color-fg)]">WEB · DATA · AI</span>
             <span aria-hidden="true" className="h-3 w-px bg-[var(--color-rule)]" />
             <span className="t-mono text-[var(--color-accent)]">DP—01</span>
           </div>
           <p data-hero-fade className="t-body max-w-[30ch] opacity-0 md:text-right">
-            Independent. Building sites and interactive 3D for the browser.
-            Currently taking on freelance work.
+            Business software, dashboards, AI products and interactive 3D for
+            the browser. Open to full-time roles and freelance work.
           </p>
         </div>
       </div>

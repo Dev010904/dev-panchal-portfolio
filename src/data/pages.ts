@@ -95,6 +95,14 @@ export const PAGES: PageDef[] = [
         title: 'Custom GLSL',
         body: 'The distinctive moments are hand-written shaders. A library helper gets you the effect everyone else has; a shader gets you the one nobody else has.',
       },
+      {
+        title: 'PostgreSQL + Supabase',
+        body: 'For software a business runs on, the rules live in the database: row-level security on every table, and money computed by the database rather than typed into a form.',
+      },
+      {
+        title: 'Python + pandas',
+        body: 'Analysis starts by checking the data can answer the question at all. A model trained on a label that is secretly a rule of its own inputs scores perfectly and means nothing.',
+      },
     ],
     outro: 'Everything on this site is procedural. There is no model file to download.',
   },

@@ -385,7 +385,7 @@ export function Preloader() {
           />
         </div>
         <div className="mt-3 flex items-center justify-between">
-          <span className="t-label">WEB · 3D · MOTION</span>
+          <span className="t-label">WEB · DATA · AI</span>
           <div className="flex items-baseline gap-4">
             <span className="t-label">COMPILING SCENE</span>
             <span

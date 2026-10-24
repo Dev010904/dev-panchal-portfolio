@@ -31,7 +31,11 @@ export interface Project {
   summary: string;
   /** Short discipline tags shown as monospace labels. */
   tags: string[];
-  /** Primary first. See ProjectLink. */
+  /**
+   * Primary first. See ProjectLink. Empty for software that is private by
+   * nature (a client's internal system behind a login): the card then opens
+   * nothing and says why instead of linking to a sign-in page.
+   */
   links: ProjectLink[];
   /** Path under /public. Must be a real captured screenshot, never a mockup. */
   image: string;
@@ -85,6 +89,47 @@ export const projects: Project[] = [
     ],
   },
   {
+    id: 'apl-profitability',
+    title: 'APL Logistics',
+    summary:
+      'Profitability analysis of 180,519 order lines: 18.7% of them lose $3.71M, and discounting is not the reason. Tested cleaning pipeline, research paper and a live dashboard.',
+    context: 'Data analysis · supply-chain margin intelligence',
+    tags: ['DATA', 'PYTHON', 'DASHBOARD'],
+    links: [
+      { label: 'LIVE DASHBOARD', href: 'https://apl-logistics-profitability.streamlit.app' },
+      { label: 'GITHUB', href: 'https://github.com/Dev010904/apl-logistics-profitability-analysis' },
+      {
+        label: 'RESEARCH PAPER',
+        href: 'https://github.com/Dev010904/apl-logistics-profitability-analysis/blob/main/reports/research_paper.pdf',
+      },
+    ],
+    image: '/work/apl-profitability.webp',
+    imageWidth: 1280,
+    imageHeight: 800,
+    status: 'live',
+    role: 'Solo analysis',
+    year: 2026,
+    stack: ['Python', 'pandas', 'Plotly', 'Streamlit', 'pytest'],
+  },
+  {
+    id: 'pe-daily-report',
+    title: 'PE Daily Report',
+    summary:
+      "The stock and ledger software an industrial-gas distributor runs on every day: offline-first on an Android phone at the godown, the same app on the office PC, keyboard-only entry like Tally.",
+    context: 'Client software · Panchal Enterprise',
+    tags: ['SOFTWARE', 'FLUTTER', 'CLIENT'],
+    // Private: the client's own records behind a login. The screenshot is the
+    // real app running on made-up companies, not the business's data.
+    links: [],
+    image: '/work/pe-daily-report.webp',
+    imageWidth: 1280,
+    imageHeight: 800,
+    status: 'live',
+    role: 'Design & build',
+    year: 2026,
+    stack: ['Flutter', 'Dart', 'Supabase', 'SQLite', 'Cloudflare Workers'],
+  },
+  {
     id: 'panchal-gases',
     title: 'Panchal Gases',
     summary:
@@ -132,5 +177,5 @@ export const projects: Project[] = [
   },
 ];
 
-/** The link a click on the card opens. */
-export const primaryLink = (p: Project): ProjectLink => p.links[0];
+/** The link a click on the card opens, if the project has a public one. */
+export const primaryLink = (p: Project): ProjectLink | undefined => p.links[0];

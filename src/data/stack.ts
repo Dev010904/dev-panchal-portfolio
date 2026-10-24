@@ -23,13 +23,14 @@
  *             cannot earn a sentence that says something non-obvious, it does
  *             not belong on the page.
  *
- * Every entry is evidenced by this repo's package.json or by a project in
- * data/projects.ts. Nothing aspirational goes in here — a stack section listing
+ * Every entry is evidenced by this repo's package.json, by a project in
+ * data/projects.ts or the job in data/experience.ts, or by a credential.
+ * Nothing aspirational goes in here — a stack section listing
  * things you have only read about is the fastest way to fail the interview it
  * was supposed to win.
  */
 
-/** The four regions. Order fixes their placement around the ring. */
+/** The five regions. Order fixes their placement around the ring. */
 export const CLUSTERS = [
   {
     id: 'render',
@@ -51,6 +52,11 @@ export const CLUSTERS = [
     id: 'ground',
     label: 'GROUND',
     blurb: 'Build, ship, measure — the half that decides whether any of it is real.',
+  },
+  {
+    id: 'data',
+    label: 'DATA & AI',
+    blurb: 'Asking data a straight question, and putting models to work on the answer.',
   },
 ] as const;
 
@@ -290,6 +296,96 @@ export const STACK: StackNode[] = [
     weight: 0.4,
     note: 'Transactional email over HTTP, after SMTP kept dying from a serverless function. The fix was the transport, not the code.',
     links: ['csp'],
+  },
+  {
+    id: 'supabase',
+    label: 'Supabase',
+    cluster: 'ground',
+    weight: 0.8,
+    note: 'Postgres, auth and row-level security for ANK Track and PE Daily Report. The rules live in the database, not in the screen.',
+    links: ['next', 'sql'],
+  },
+  {
+    id: 'vercel',
+    label: 'Vercel',
+    cluster: 'ground',
+    weight: 0.6,
+    note: 'Where this site and ANK Track deploy: every branch gets a preview, and main is production.',
+    links: ['next', 'git'],
+  },
+  {
+    id: 'cloudflare',
+    label: 'Cloudflare Workers',
+    cluster: 'ground',
+    weight: 0.4,
+    note: "Serves PE Daily Report's web app with strict security headers, and hands out the Android build only after checking the login.",
+    links: ['csp', 'flutter'],
+  },
+  {
+    id: 'flutter',
+    label: 'Flutter',
+    cluster: 'interface',
+    weight: 0.65,
+    note: 'One code base for PE Daily Report: an offline-first Android app at the godown and the same screens on the office PC.',
+    links: ['supabase'],
+  },
+
+  // ── DATA & AI ───────────────────────────────────────────────────────────
+  {
+    id: 'python',
+    label: 'Python',
+    cluster: 'data',
+    weight: 1,
+    note: 'Where the analysis lives. 180,519 order lines cleaned, tested and questioned in it for the APL Logistics study.',
+    links: ['pandas', 'streamlit'],
+  },
+  {
+    id: 'pandas',
+    label: 'pandas',
+    cluster: 'data',
+    weight: 0.9,
+    note: 'Where a raw export becomes a table you can trust: types checked, identities verified, every dropped row counted.',
+    links: [],
+  },
+  {
+    id: 'sql',
+    label: 'SQL',
+    cluster: 'data',
+    weight: 0.85,
+    note: "Questions asked where the data lives. ANK Track's reports and its money are computed in PostgreSQL, not in the browser.",
+    links: [],
+  },
+  {
+    id: 'gemini',
+    label: 'Gemini API',
+    cluster: 'data',
+    weight: 0.75,
+    note: "The model behind KAAM KARO's plans, with a local fallback planner for when it is slow or rate-limited.",
+    links: ['node'],
+  },
+  {
+    id: 'powerbi',
+    label: 'Power BI',
+    cluster: 'data',
+    weight: 0.6,
+    note: 'Dashboards for people who will never open a notebook. Top Performer in the IIT Mandi TIH Live module.',
+    links: ['excel'],
+  },
+  {
+    id: 'streamlit',
+    label: 'Streamlit',
+    cluster: 'data',
+    weight: 0.55,
+    note: 'The analysis as an app: the filters, tabs and charts of the live APL Logistics dashboard.',
+    links: [],
+  },
+  {
+    id: 'excel',
+    label: 'Excel',
+    cluster: 'data',
+    weight: 0.45,
+    note: "Still where a business reads its numbers. ANK's monthly attendance register downloads as a workbook.",
+    links: [],
   },
 ];
 

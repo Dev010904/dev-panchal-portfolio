@@ -34,6 +34,12 @@ export interface Credential {
 
 export const credentials: Credential[] = [
   {
+    date: 'Sep 2026',
+    title: 'Introduction to Big Data Tools',
+    issuer: 'Simplilearn',
+    url: '/credentials/simplilearn-big-data-tools.pdf',
+  },
+  {
     date: 'Jul 2026',
     title: 'AI Automation & Intelligent Solutions Internship',
     issuer: 'AICTE / IBM SkillsBuild',

@@ -196,7 +196,7 @@ export function Marquee() {
       </div>
       <div className="h-px w-full bg-[var(--color-rule)]" />
       <span className="sr-only">
-        Technologies: Three.js, WebGL, GSAP, React, Motion.
+        What I build: web apps, data analysis, AI, Three.js and motion.
       </span>
     </div>
   );

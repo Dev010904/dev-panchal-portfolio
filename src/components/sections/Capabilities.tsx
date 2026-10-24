@@ -5,6 +5,7 @@ import { useRef } from 'react';
 import { ACHIEVEMENT } from '@/config/animation';
 import { capabilities } from '@/data/capabilities';
 import { achievement, credentials } from '@/data/credentials';
+import { experience } from '@/data/experience';
 import { projects } from '@/data/projects';
 import { STACK } from '@/data/stack';
 import { gsap, ScrollTrigger, useGsap } from '@/lib/gsap';
@@ -34,8 +35,10 @@ import { useScene } from '@/store/scene';
  * passes over it — a blueprint being exposed. Scrolling back runs it backwards.
  *
  * Then the capabilities: four figures, each plotted stroke by stroke as it
- * comes up the page (construction lines, then the object, then the callouts),
- * and the facts — every number read from data, nothing typed in.
+ * comes up the page (construction lines, then the object, then the callouts);
+ * the experience, set as the schedule of work a drawing keeps beside its title
+ * block and stamped when it arrives; and the facts — every number read from
+ * data, nothing typed in.
  *
  * WHILE THE PAPER COVERS THE WHOLE FRAME THE SCENE STOPS RENDERING
  * (store.covered → SceneRoot's CoverPause). Nobody can see it, and a GPU that
@@ -79,6 +82,7 @@ export function Capabilities() {
         gsap.set(plots, { strokeDashoffset: 0 });
         gsap.set(labels, { opacity: 1 });
         gsap.set('[data-cap-fade]', { autoAlpha: 1, y: 0 });
+        gsap.set('[data-stamp]', { autoAlpha: 1, rotation: -5 });
         return;
       }
 
@@ -150,6 +154,23 @@ export function Capabilities() {
             scrollTrigger: { trigger: row, start: 'top 76%' },
           },
         );
+        // A finished job gets its stamp: it lands, slightly askew, like ink.
+        const stamp = row.querySelector<HTMLElement>('[data-stamp]');
+        if (stamp) {
+          gsap.fromTo(
+            stamp,
+            { autoAlpha: 0, scale: 1.7, rotation: -14 },
+            {
+              autoAlpha: 1,
+              scale: 1,
+              rotation: -5,
+              duration: 0.42,
+              delay: 0.5,
+              ease: 'power4.in',
+              scrollTrigger: { trigger: row, start: 'top 64%' },
+            },
+          );
+        }
         const num = row.querySelector<HTMLElement>('[data-fig-no]');
         if (num) {
           const text = num.textContent ?? '';
@@ -268,6 +289,50 @@ export function Capabilities() {
             </article>
           ))}
 
+          {/* The schedule of work: the job these were done in. */}
+          {experience.map((r) => (
+            <div
+              key={r.company}
+              id="experience"
+              data-cap-row
+              className="col-span-12 grid grid-cols-12 gap-x-[clamp(0.75rem,1.6vw,1.75rem)] gap-y-10 border-t border-[var(--color-rule)] pt-[clamp(1.5rem,4vh,2.5rem)]"
+            >
+              <div className="col-span-12 flex flex-col items-start gap-5 md:col-span-5">
+                <span data-cap-fade className="t-label flex items-center gap-4">
+                  <span data-fig-no>SCHEDULE A</span>
+                  <span className="h-px w-8 bg-[var(--color-rule)]" />
+                  <span>EXPERIENCE · {r.period}</span>
+                </span>
+                <h3 data-cap-fade className="text-[clamp(2.2rem,4.4vw,4.2rem)] font-[600] leading-[0.98] tracking-[-0.035em]">
+                  {r.role}
+                </h3>
+                <span data-cap-fade className="t-mono text-[var(--color-fg)]">
+                  {r.company} · {r.place}
+                </span>
+                <p data-cap-fade className="max-w-[44ch] text-[clamp(1rem,1.15vw,1.15rem)] leading-[1.55] text-[var(--color-fg-dim)]">
+                  {r.summary}
+                </p>
+                <span data-stamp className="sheet-stamp t-mono" style={{ opacity: 0 }}>
+                  {r.status}
+                </span>
+              </div>
+              <ol className="sheet-schedule col-span-12 md:col-span-7" aria-label={`Work at ${r.company}`}>
+                <li data-cap-fade aria-hidden="true" className="sheet-schedule-head t-label">
+                  <span>ITEM</span>
+                  <span>WORK</span>
+                  <span>BUILT WITH</span>
+                </li>
+                {r.items.map((it, k) => (
+                  <li key={it.work} data-cap-fade className="sheet-schedule-row">
+                    <span className="t-mono text-[var(--color-accent)]">{String(k + 1).padStart(2, '0')}</span>
+                    <span>{it.work}</span>
+                    <span className="t-label">{it.spec}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          ))}
+
           {/* The facts: every number here is read from data. */}
           <div
             id="achievement"
@@ -350,10 +415,10 @@ function IntroLayout({ ghost = false }: { ghost?: boolean }) {
 
       <div className="col-span-12 flex flex-col gap-6 md:col-span-5 md:col-start-8">
         <p className="text-[clamp(1.05rem,1.35vw,1.35rem)] leading-[1.5]">
-          Four things I am hired for. Each one is already on this page — you have been scrolling
-          through all of them.
+          Four things I am hired for, each one backed by work you can open on this page. Then the
+          job I did them in.
         </p>
-        <span className="t-label">WEBSITES · REAL-TIME 3D · MOTION · PERFORMANCE</span>
+        <span className="t-label">WEB APPS · DATA · AI · REAL-TIME 3D</span>
       </div>
     </div>
   );

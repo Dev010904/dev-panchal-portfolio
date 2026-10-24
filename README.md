@@ -161,5 +161,5 @@ Vercel, zero config — it is a stock Next.js App Router build.
 npx vercel
 ## Contact
 
-devpanchal.web@gmail.com · [WhatsApp](https://wa.me/918460289432) ·
+devpanchal.web@gmail.com · [WhatsApp](https://wa.me/917284923872) ·
 [Instagram](https://www.instagram.com/devp.web_dev/)
