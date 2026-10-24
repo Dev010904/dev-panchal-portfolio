@@ -290,16 +290,16 @@ export function Capabilities() {
           ))}
 
           {/* The schedule of work: the job these were done in. */}
-          {experience.map((r) => (
+          {experience.map((r, i) => (
             <div
-              key={r.company}
-              id="experience"
+              key={r.role}
+              id={i === 0 ? 'experience' : undefined}
               data-cap-row
               className="col-span-12 grid grid-cols-12 gap-x-[clamp(0.75rem,1.6vw,1.75rem)] gap-y-10 border-t border-[var(--color-rule)] pt-[clamp(1.5rem,4vh,2.5rem)]"
             >
               <div className="col-span-12 flex flex-col items-start gap-5 md:col-span-5">
                 <span data-cap-fade className="t-label flex items-center gap-4">
-                  <span data-fig-no>SCHEDULE A</span>
+                  <span data-fig-no>SCHEDULE {String.fromCharCode(65 + i)}</span>
                   <span className="h-px w-8 bg-[var(--color-rule)]" />
                   <span>EXPERIENCE · {r.period}</span>
                 </span>

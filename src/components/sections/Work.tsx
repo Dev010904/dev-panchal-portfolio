@@ -207,7 +207,7 @@ export function Work() {
 
             <div data-meta className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
               <span className="t-mono text-[var(--color-accent)]">
-                {project.status === 'live' ? 'LIVE' : project.status.toUpperCase()}
+                {project.status.replace('-', ' ').toUpperCase()}
               </span>
               {project.role && (
                 <span className="t-mono text-[var(--color-fg-dim)]">{project.role}</span>

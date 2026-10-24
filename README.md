@@ -103,7 +103,7 @@ been solving a problem that does not exist are in
 
 **Nothing is downloaded.** The mark, the interior structures, the particle
 fields and the environment lighting are all generated in code. There is no
-model file, no HDRI, no texture except the one real project screenshot.
+model file, no HDRI, no texture except the real project screenshots.
 
 ---
 
@@ -161,5 +161,5 @@ Vercel, zero config — it is a stock Next.js App Router build.
 npx vercel
 ## Contact
 
-devpanchal.web@gmail.com · [WhatsApp](https://wa.me/917284923872) ·
+[dev-panchal.vercel.app](https://dev-panchal.vercel.app) · devpanchal.web@gmail.com · [WhatsApp](https://wa.me/917284923872) ·
 [Instagram](https://www.instagram.com/devp.web_dev/)

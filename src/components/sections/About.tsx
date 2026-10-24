@@ -10,7 +10,7 @@ import { SectionTag, useRailFade } from '@/components/ui/primitives';
 import { useScene } from '@/store/scene';
 
 const COPY =
-  'I build websites and the software businesses run on, find what data is actually saying, and put AI to work inside real products. Most recently, three months as a web development intern at ANK Design & Automation Solutions. Open to full-time roles and freelance work.';
+  'I build websites and the software businesses run on, find what data is actually saying, and put AI to work inside real products. Recently, three months as a web development intern at ANK Design & Automation Solutions, and sites and software for my own clients, like Maruti Gases. Open to full-time roles and freelance work.';
 
 /**
  * ABOUT — three sentences, first person, no register above plain.
