@@ -762,7 +762,7 @@ button {
 }
 @media (min-width: 1024px) {
   .sheet-schedule > li {
-    grid-template-columns: 2.6rem minmax(0, 1fr) minmax(9rem, 13rem);
+    grid-template-columns: 2.6rem minmax(0, 1fr) minmax(10rem, 17rem);
   }
   .sheet-schedule > li > :nth-child(3) {
     grid-column: auto;

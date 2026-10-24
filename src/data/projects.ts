@@ -115,7 +115,7 @@ export const projects: Project[] = [
     id: 'pe-daily-report',
     title: 'PE Daily Report',
     summary:
-      "The stock and ledger software an industrial-gas distributor runs on every day: offline-first on an Android phone at the godown, the same app on the office PC, keyboard-only entry like Tally.",
+      'Stock and ledger software an industrial-gas distributor runs on every day: offline-first on Android at the godown, the same app on the office PC.',
     context: 'Client software · Panchal Enterprise',
     tags: ['SOFTWARE', 'FLUTTER', 'CLIENT'],
     // Private: the client's own records behind a login. The screenshot is the
