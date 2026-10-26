@@ -130,23 +130,6 @@ export const projects: Project[] = [
     stack: ['Flutter', 'Dart', 'Supabase', 'SQLite', 'Cloudflare Workers'],
   },
   {
-    id: 'maruti-gases',
-    title: 'Maruti Gases',
-    summary:
-      'Website for an industrial and medical gas manufacturer in Halol GIDC: a gas explorer, products, cylinder care, and a quote form that goes straight to WhatsApp. Won from a live sample built on their own details.',
-    context: 'Freelance client · Maruti Gases Pvt. Ltd., Halol',
-    tags: ['WEB', 'CLIENT', 'FREELANCE'],
-    links: [{ label: 'VIEW SITE', href: 'https://mgpl-sample.vercel.app' }],
-    image: '/work/maruti-gases.webp',
-    imageWidth: 1280,
-    imageHeight: 800,
-    // Signed, and being finished for launch on the client's own domain.
-    status: 'in-progress',
-    role: 'Design & build',
-    year: 2026,
-    stack: ['HTML', 'CSS', 'JavaScript', 'Lenis', 'Vercel'],
-  },
-  {
     id: 'panchal-gases',
     title: 'Panchal Gases',
     summary:

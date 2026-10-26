@@ -66,14 +66,10 @@ export const experience: Role[] = [
     company: 'Independent',
     place: 'Vadodara',
     period: '2026 — NOW',
-    status: 'ACTIVE · 3 CLIENTS',
+    status: 'ACTIVE · 2 CLIENTS',
     summary:
       'Websites and software for Gujarat businesses, found, pitched, built and kept running by me.',
     items: [
-      {
-        work: 'Maruti Gases Pvt. Ltd., Halol: a website for an industrial and medical gas manufacturer, won from a live sample built on their own details',
-        spec: 'HTML · CSS · JAVASCRIPT · LENIS',
-      },
       {
         work: 'Panchal Enterprise: PE Daily Report, the stock and ledger software the business runs on every day',
         spec: 'FLUTTER · SUPABASE · SQLITE',
